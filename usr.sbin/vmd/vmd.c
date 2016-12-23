@@ -340,6 +340,8 @@ main(int argc, char **argv)
 	/* log to stderr until daemonized */
 	log_init(1, LOG_DAEMON);
 
+	log_info("hello world");
+
 	if ((env = calloc(1, sizeof(*env))) == NULL)
 		fatal("calloc: env");
 

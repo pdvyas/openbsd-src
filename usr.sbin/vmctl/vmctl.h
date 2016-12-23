@@ -31,6 +31,7 @@ enum actions {
 	CMD_START,
 	CMD_STATUS,
 	CMD_STOP,
+	CMD_HELLO,
 };
 
 struct ctl_command;
@@ -74,6 +75,7 @@ __dead void
 	 ctl_openconsole(const char *);
 
 /* vmctl.c */
+int vm_conrtrol_fd;
 int	 create_imagefile(const char *, long);
 int	 start_vm(const char *, int, int, char **, int, char **, char *);
 int	 start_vm_complete(struct imsg *, int *, int);
@@ -83,6 +85,8 @@ int	 check_info_id(const char *, uint32_t);
 void	 get_info_vm(uint32_t, const char *, int);
 int	 add_info(struct imsg *, int *);
 void	 print_vm_info(struct vmop_info_result *, size_t);
+void	 vm_hello();
+void	 vm_hello_reply();
 __dead void
 	 vm_console(struct vmop_info_result *, size_t);
 

@@ -468,3 +468,32 @@ create_imagefile(const char *imgfile_path, long imgsize)
 	ret = close(fd);
 	return (ret);
 }
+
+void
+vm_hello() 
+{
+	int fds[2];
+	printf("Hello World!\n");
+	if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fds) == -1)
+		printf("socketpair");
+	/* printf("%d %d\n", fds[0], fds[1]); */
+	/* write(fds[0], "hellofrmsocket", 14); */
+	/* read(fds[1], buff, 14); */
+	/* printf("%s\n", buff); */
+
+
+	/* imsg_compose(ibuf, IMSG_VMDOP_RELOAD, 0, 0, -1, NULL, 0); */
+	vm_conrtrol_fd = fds[0];
+	printf("vm_control: %d\n", vm_conrtrol_fd);
+	imsg_compose(ibuf, IMSG_VMDOP_HELLO, 0, 0, fds[1],
+			NULL, 0);
+}
+
+
+void
+vm_hello_reply() 
+{
+	char buff[22] = {0};
+	read(vm_conrtrol_fd, buff, 21);
+	printf("%s\n", buff);
+}

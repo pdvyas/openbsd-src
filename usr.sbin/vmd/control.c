@@ -370,6 +370,11 @@ control_dispatch_imsg(int fd, short event, void *arg)
 		case IMSG_CTL_RESET:
 			proc_forward_imsg(ps, &imsg, PROC_PARENT, -1);
 			break;
+		case IMSG_VMDOP_HELLO:
+			log_info("Hello From VMCTL!!!");
+			write(imsg.fd, "hellofromtheotherside", 21);
+			imsg_compose(&c->iev.ibuf, IMSG_VMDOP_HELLO_REPLY, 0, 0, -1, NULL, 0);
+			break;
 		default:
 			log_debug("%s: error handling imsg %d",
 			    __func__, imsg.hdr.type);

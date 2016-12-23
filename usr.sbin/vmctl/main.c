@@ -55,6 +55,7 @@ int		 ctl_reset(struct parse_result *, int, char *[]);
 int		 ctl_start(struct parse_result *, int, char *[]);
 int		 ctl_status(struct parse_result *, int, char *[]);
 int		 ctl_stop(struct parse_result *, int, char *[]);
+int		 ctl_hello(struct parse_result *, int, char *[]);
 
 struct ctl_command ctl_commands[] = {
 	{ "console",	CMD_CONSOLE,	ctl_console,	"id" },
@@ -67,6 +68,7 @@ struct ctl_command ctl_commands[] = {
 	    "\t\t[-n switch] [-i count] [-d disk]*" },
 	{ "status",	CMD_STATUS,	ctl_status,	"[id]" },
 	{ "stop",	CMD_STOP,	ctl_stop,	"id" },
+	{ "hello",	CMD_HELLO,	ctl_hello, ""},
 	{ NULL }
 };
 
@@ -94,6 +96,7 @@ ctl_usage(struct ctl_command *ctl)
 	    ctl->name, ctl->usage);
 	exit(1);
 }
+
 
 int
 main(int argc, char *argv[])
@@ -149,7 +152,7 @@ parse(int argc, char *argv[])
 
 	if (!ctl->has_pledge) {
 		/* pledge(2) default if command doesn't have its own pledge */
-		if (pledge("stdio rpath exec unix", NULL) == -1)
+		if (pledge("stdio rpath exec unix sendfd", NULL) == -1)
 			err(1, "pledge");
 	}
 	if (ctl->main(&res, argc, argv) != 0)
@@ -223,6 +226,8 @@ vmmaction(struct parse_result *res)
 		done = 1;
 		break;
 	case CMD_CREATE:
+	case CMD_HELLO:
+		vm_hello();
 	case NONE:
 		break;
 	}
@@ -271,6 +276,8 @@ vmmaction(struct parse_result *res)
 			case CMD_STATUS:
 				done = add_info(&imsg, &ret);
 				break;
+			case CMD_HELLO:
+				vm_hello_reply();
 			default:
 				done = 1;
 				break;
@@ -564,6 +571,12 @@ ctl_start(struct parse_result *res, int argc, char *argv[])
 	if (res->nnets > res->nifs)
 		res->nifs = res->nnets;
 
+	return (vmmaction(res));
+}
+
+int
+ctl_hello(struct parse_result *res, int argc, char *argv[])
+{
 	return (vmmaction(res));
 }
 
