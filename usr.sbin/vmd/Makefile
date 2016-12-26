@@ -13,6 +13,7 @@ CFLAGS+=	-Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+=	-Wmissing-declarations
 CFLAGS+=	-Wshadow -Wpointer-arith -Wcast-qual
 CFLAGS+=	-Wsign-compare
+CFLAGS+=	-g
 
 LDADD+=		-lutil -lpthread -levent
 DPADD+=		${LIBUTIL} ${LIBEVENT}

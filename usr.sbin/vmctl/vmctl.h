@@ -31,6 +31,8 @@ enum actions {
 	CMD_START,
 	CMD_STATUS,
 	CMD_STOP,
+	CMD_PAUSE,
+	CMD_UNPAUSE,
 };
 
 struct ctl_command;

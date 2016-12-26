@@ -55,6 +55,8 @@ int		 ctl_reset(struct parse_result *, int, char *[]);
 int		 ctl_start(struct parse_result *, int, char *[]);
 int		 ctl_status(struct parse_result *, int, char *[]);
 int		 ctl_stop(struct parse_result *, int, char *[]);
+int		 ctl_pause(struct parse_result *, int, char *[]);
+int		 ctl_unpause(struct parse_result *, int, char *[]);
 
 struct ctl_command ctl_commands[] = {
 	{ "console",	CMD_CONSOLE,	ctl_console,	"id" },
@@ -67,6 +69,8 @@ struct ctl_command ctl_commands[] = {
 	    "\t\t[-n switch] [-i count] [-d disk]*" },
 	{ "status",	CMD_STATUS,	ctl_status,	"[id]" },
 	{ "stop",	CMD_STOP,	ctl_stop,	"id" },
+	{ "pause",	CMD_PAUSE,	ctl_pause,	"id" },
+	{ "unpause",	CMD_UNPAUSE,	ctl_unpause,	"id" },
 	{ NULL }
 };
 
@@ -223,6 +227,14 @@ vmmaction(struct parse_result *res)
 		done = 1;
 		break;
 	case CMD_CREATE:
+	case CMD_PAUSE:
+		printf("Pause\n");
+		imsg_compose(ibuf, IMSG_VMDOP_PAUSE_VM, 0, 0, -1, NULL, 0);
+		break;
+	case CMD_UNPAUSE:
+		printf("Unpause\n");
+		done = 1;
+		break;
 	case NONE:
 		break;
 	}
@@ -271,6 +283,7 @@ vmmaction(struct parse_result *res)
 			case CMD_STATUS:
 				done = add_info(&imsg, &ret);
 				break;
+			case CMD_PAUSE:
 			default:
 				done = 1;
 				break;
@@ -591,6 +604,30 @@ ctl_console(struct parse_result *res, int argc, char *argv[])
 	return (vmmaction(res));
 }
 
+int
+ctl_pause(struct parse_result *res, int argc, char *argv[])
+{
+	if (argc == 2) {
+		if (parse_vmid(res, argv[1]) == -1)
+			errx(1, "invalid id: %s", argv[1]);
+	} else if (argc != 2)
+		ctl_usage(res->ctl);
+
+	return (vmmaction(res));
+}
+
+int
+ctl_unpause(struct parse_result *res, int argc, char *argv[])
+{
+	if (argc == 2) {
+		if (parse_vmid(res, argv[1]) == -1)
+			errx(1, "invalid id: %s", argv[1]);
+	} else if (argc != 2)
+		ctl_usage(res->ctl);
+
+	return (vmmaction(res));
+}
+
 __dead void
 ctl_openconsole(const char *name)
 {
@@ -598,3 +635,4 @@ ctl_openconsole(const char *name)
 	execl(VMCTL_CU, VMCTL_CU, "-l", name, "-s", "9600", (char *)NULL);
 	err(1, "failed to open the console");
 }
+

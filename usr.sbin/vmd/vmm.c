@@ -237,6 +237,12 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 
 		config_getreset(env, imsg);
 		break;
+	case IMSG_VMDOP_PAUSE_VM:
+		if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE,
+		    imsg->hdr.peerid, -1, NULL, 0) == -1)
+			return (-1);
+		log_info("Hello from vmm!");
+		break;
 	default:
 		return (-1);
 	}
