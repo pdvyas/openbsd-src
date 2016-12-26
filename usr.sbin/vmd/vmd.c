@@ -130,6 +130,11 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 		memcpy(&v, imsg->data, sizeof(v));
 		vmd_reload(v, str);
 		break;
+	case IMSG_VMDOP_PAUSE_VM:
+		proc_compose_imsg(ps, PROC_VMM, -1, imsg->hdr.type,
+				imsg->hdr.peerid, -1, NULL, 0);
+		log_info("Forwarding pause to VMM");
+		break;
 	default:
 		return (-1);
 	}
@@ -167,6 +172,12 @@ vmd_dispatch_vmm(int fd, struct privsep_proc *p, struct imsg *imsg)
 	struct vmop_info_result	 vir;
 
 	switch (imsg->hdr.type) {
+	case IMSG_VMDOP_PAUSE_VM_RESPONSE:
+		log_info("Gaat response");
+		proc_compose_imsg(ps, PROC_CONTROL, -1,
+					imsg->hdr.type, imsg->hdr.peerid, -1,
+					NULL, 0);
+		break;
 	case IMSG_VMDOP_START_VM_RESPONSE:
 		IMSG_SIZE_CHECK(imsg, &vmr);
 		memcpy(&vmr, imsg->data, sizeof(vmr));

@@ -82,6 +82,7 @@ control_dispatch_vmm(int fd, struct privsep_proc *p, struct imsg *imsg)
 
 	switch (imsg->hdr.type) {
 	case IMSG_VMDOP_START_VM_RESPONSE:
+	case IMSG_VMDOP_PAUSE_VM_RESPONSE:
 	case IMSG_VMDOP_TERMINATE_VM_RESPONSE:
 	case IMSG_VMDOP_GET_INFO_VM_DATA:
 	case IMSG_VMDOP_GET_INFO_VM_END_DATA:
@@ -260,6 +261,7 @@ void
 control_close(int fd, struct control_sock *cs)
 {
 	struct ctl_conn	*c;
+	log_info("closing %d", fd);
 
 	if ((c = control_connbyfd(fd)) == NULL) {
 		log_warn("%s: fd %d: not found", __func__, fd);
@@ -368,7 +370,20 @@ control_dispatch_imsg(int fd, short event, void *arg)
 		case IMSG_VMDOP_LOAD:
 		case IMSG_VMDOP_RELOAD:
 		case IMSG_CTL_RESET:
-			proc_forward_imsg(ps, &imsg, PROC_PARENT, -1);
+			imsg.hdr.peerid = fd;
+
+			if (proc_compose_imsg(ps, PROC_PARENT, -1,
+			    imsg.hdr.type, imsg.hdr.peerid, -1,
+			    imsg.data, IMSG_DATA_SIZE(&imsg)) == -1) {
+				control_close(fd, cs);
+				return;
+			}
+			break;
+		case IMSG_VMDOP_PAUSE_VM:
+			imsg.hdr.peerid = fd;
+			proc_compose_imsg(ps, PROC_PARENT, -1,
+			    imsg.hdr.type, imsg.hdr.peerid, -1,
+			    NULL, 0);
 			break;
 		default:
 			log_debug("%s: error handling imsg %d",
