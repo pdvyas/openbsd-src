@@ -238,8 +238,17 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		config_getreset(env, imsg);
 		break;
 	case IMSG_VMDOP_PAUSE_VM:
+		/* if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE, */
+		/*     imsg->hdr.peerid, -1, 1, sizeof(1)) == -1) */
+		/* 	return (-1); */
+		IMSG_SIZE_CHECK(imsg, &vtp);
+		memcpy(&vtp, imsg->data, sizeof(vtp));
+		id = vtp.vtp_vm_id;
+		vmr.vmr_result = 0;
+		vmr.vmr_id = id;
+		log_info("recd %d", id);
 		if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE,
-		    imsg->hdr.peerid, -1, NULL, 0) == -1)
+		    imsg->hdr.peerid, -1, &vmr, sizeof(vmr)) == -1)
 			return (-1);
 		log_info("Hello from vmm!");
 		break;
@@ -1138,6 +1147,8 @@ vcpu_run_loop(void *arg)
 			    __func__, (int)ret);
 			return ((void *)ret);
 		}
+
+		// HERE: block if paused
 
 		/* If we are halted, wait */
 		if (vcpu_hlt[n]) {

@@ -93,6 +93,7 @@ control_dispatch_vmm(int fd, struct privsep_proc *p, struct imsg *imsg)
 		}
 		imsg_compose_event(&c->iev, imsg->hdr.type,
 		    0, 0, -1, imsg->data, IMSG_DATA_SIZE(imsg));
+		log_info("Forwarded message to fd");
 		break;
 	default:
 		return (-1);
@@ -383,7 +384,7 @@ control_dispatch_imsg(int fd, short event, void *arg)
 			imsg.hdr.peerid = fd;
 			proc_compose_imsg(ps, PROC_PARENT, -1,
 			    imsg.hdr.type, imsg.hdr.peerid, -1,
-			    NULL, 0);
+			    imsg.data, sizeof(imsg.data));
 			break;
 		default:
 			log_debug("%s: error handling imsg %d",
