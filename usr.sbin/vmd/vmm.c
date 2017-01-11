@@ -68,8 +68,9 @@ int opentap(char *);
 int start_vm(struct imsg *, uint32_t *);
 int terminate_vm(struct vm_terminate_params *);
 int get_info_vm(struct privsep *, struct imsg *, int);
-int run_vm(int *, int *, struct vm_create_params *, struct vcpu_reg_state *);
+int run_vm(int *, int *, struct vm_create_params *, struct vcpu_reg_state *, int);
 void *event_thread(void *);
+void *vm_proc_dispatch_thread(void *);
 void *vcpu_run_loop(void *);
 int vcpu_exit(struct vm_run_params *);
 int vcpu_reset(uint32_t, uint32_t, struct vcpu_reg_state *);
@@ -535,13 +536,15 @@ start_vm(struct imsg *imsg, uint32_t *id)
 		if (read(fds[0], &vcp->vcp_id, sizeof(vcp->vcp_id)) !=
 		    sizeof(vcp->vcp_id))
 			fatal("read vcp id");
-		close(fds[0]);
+		// NOTE: Let's not close this fd and use it as IMSG channel
+		// TODO: Store this some where?
 
 		if (vcp->vcp_id == 0)
 			goto err;
 
 		*id = vcp->vcp_id;
 
+		log_info("This does return, no?");
 		return (0);
 	} else {
 		/* Child */
@@ -563,7 +566,6 @@ start_vm(struct imsg *imsg, uint32_t *id)
 		if (write(fds[1], &vcp->vcp_id, sizeof(vcp->vcp_id)) !=
 		    sizeof(vcp->vcp_id))
 			fatal("write vcp id");
-		close(fds[1]);
 
 		if (ret) {
 			errno = ret;
@@ -610,7 +612,7 @@ start_vm(struct imsg *imsg, uint32_t *id)
 			nicfds[i] = vm->vm_ifs[i].vif_fd;
 
 		/* Execute the vcpu run loop(s) for this VM */
-		ret = run_vm(vm->vm_disks, nicfds, vcp, &vrs);
+		ret = run_vm(vm->vm_disks, nicfds, vcp, &vrs, fds[1]);
 
 		_exit(ret);
 	}
@@ -901,6 +903,15 @@ init_emulated_hw(struct vm_create_params *vcp, int *child_disks,
 	virtio_init(vcp, child_disks, child_taps);
 }
 
+void*
+vm_proc_dispatch_thread(void* fd) {
+	int comm_fd = *((int *) fd);
+	while(1) {
+		log_info("Here from vm_proc_dispatch %d", comm_fd);
+		sleep(1);
+	}
+}
+
 /*
  * run_vm
  *
@@ -919,12 +930,12 @@ init_emulated_hw(struct vm_create_params *vcp, int *child_disks,
  */
 int
 run_vm(int *child_disks, int *child_taps, struct vm_create_params *vcp,
-    struct vcpu_reg_state *vrs)
+    struct vcpu_reg_state *vrs, int comm_fd)
 {
 	uint8_t evdone = 0;
 	size_t i;
 	int ret;
-	pthread_t *tid, evtid;
+	pthread_t *tid, evtid, comm_tid;
 	struct vm_run_params **vrp;
 	void *exit_status;
 
@@ -1038,6 +1049,12 @@ run_vm(int *child_disks, int *child_taps, struct vm_create_params *vcp,
 			    __func__, i);
 			return (ret);
 		}
+	}
+	ret = pthread_create(&comm_tid, NULL, vm_proc_dispatch_thread, (void *) &comm_fd);
+	if (ret) {
+		errno = ret;
+		log_warn("%s: could not create event thread", __func__);
+		return (ret);
 	}
 
 	log_debug("%s: waiting on events for VM %s", __func__, vcp->vcp_name);
