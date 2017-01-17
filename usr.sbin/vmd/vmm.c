@@ -252,6 +252,13 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		    imsg->hdr.peerid, -1, &vmr, sizeof(vmr)) == -1)
 			return (-1);
 		log_info("Hello from vmm!");
+		log_info("Sending to vmproc");
+		log_info("peer id %d", id);
+		if ((vm = vm_getbyid(id)) != NULL)
+			log_info("hey %d", vm->ibuf);
+		imsg_compose(vm->ibuf, IMSG_VMDOP_PAUSE_VM, imsg->hdr.peerid, getpid(), -1, NULL, 0);
+		imsg_flush(vm->ibuf);
+		log_info("no return?");
 		break;
 	default:
 		return (-1);
@@ -480,6 +487,7 @@ start_vm(struct imsg *imsg, uint32_t *id)
 	struct vm_create_params	*vcp;
 	struct vmboot_params	 vmboot;
 	struct vmd_vm		*vm;
+	struct imsgbuf* vm_ibuf;
 	size_t			 i;
 	int			 ret = EINVAL;
 	int			 fds[2], nicfds[VMM_MAX_NICS_PER_VM];
@@ -536,8 +544,15 @@ start_vm(struct imsg *imsg, uint32_t *id)
 		if (read(fds[0], &vcp->vcp_id, sizeof(vcp->vcp_id)) !=
 		    sizeof(vcp->vcp_id))
 			fatal("read vcp id");
-		// NOTE: Let's not close this fd and use it as IMSG channel
-		// TODO: Store this some where?
+
+		// XXX(pd): Reusing the fd to send imsgs. 
+		// initialize an imsgbuf and stick it to vmd_vm
+
+		log_info("ibuf: %d", vm->ibuf);
+		vm_ibuf = malloc(sizeof(struct imsgbuf));
+		imsg_init(vm_ibuf, fds[0]);
+		vm->ibuf = vm_ibuf;
+		log_info("ibuf: %d", vm->ibuf);
 
 		if (vcp->vcp_id == 0)
 			goto err;
@@ -906,10 +921,47 @@ init_emulated_hw(struct vm_create_params *vcp, int *child_disks,
 void*
 vm_proc_dispatch_thread(void* fd) {
 	int comm_fd = *((int *) fd);
-	while(1) {
-		log_info("Here from vm_proc_dispatch %d", comm_fd);
-		sleep(1);
+	struct imsgbuf* ibuf;
+	struct imsg     imsg;
+	ssize_t         n, datalen;
+	int             idata;
+	
+	ibuf = malloc(sizeof(struct imsgbuf));
+	imsg_init(ibuf, comm_fd);
+
+	if ((n = imsg_read(ibuf)) == -1 && errno != EAGAIN) {
+			fatal("%s: imsg_read", __func__);
 	}
+	if (n == 0) {
+		log_info("Connection closed");
+		/* handle closed connection */
+	}
+
+	for (;;) {
+		if ((n = imsg_get(ibuf, &imsg)) == -1) {
+			fatal("%s: imsg_get", __func__);
+		}
+		if (n == 0)     /* no more messages */
+			return;
+		datalen = imsg.hdr.len - IMSG_HEADER_SIZE;
+
+
+		switch (imsg.hdr.type) {
+			case IMSG_VMDOP_PAUSE_VM:
+				log_info("GOt pause imsg!");
+				if (datalen < sizeof idata) {
+					log_info("OW!");
+					/* handle corrupt message */
+				}
+				memcpy(&idata, imsg.data, sizeof idata);
+				/* handle message received */
+				break;
+		}
+
+		imsg_free(&imsg);
+	}
+
+
 }
 
 /*

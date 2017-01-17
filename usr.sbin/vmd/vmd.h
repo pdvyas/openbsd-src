@@ -164,6 +164,7 @@ struct vmd_vm {
 	int			 vm_running;
 	/* When set, VM is not started by default (PROC_PARENT only) */
 	int			 vm_disabled;
+	struct imsgbuf* ibuf;
 	TAILQ_ENTRY(vmd_vm)	 vm_entry;
 };
 TAILQ_HEAD(vmlist, vmd_vm);
