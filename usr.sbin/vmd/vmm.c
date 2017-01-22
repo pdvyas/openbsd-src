@@ -65,10 +65,10 @@ io_fn_t ioports_map[MAX_PORTS];
 
 void vmm_sighdlr(int, short, void *);
 int opentap(char *);
-int start_vm(struct imsg *, uint32_t *);
+int start_vm(struct privsep *, struct imsg *, uint32_t *);
 int terminate_vm(struct vm_terminate_params *);
 int get_info_vm(struct privsep *, struct imsg *, int);
-int run_vm(int *, int *, struct vm_create_params *, struct vcpu_reg_state *, int);
+int run_vm(struct privsep *, int *, int *, struct vm_create_params *, struct vcpu_reg_state *, int);
 void *event_thread(void *);
 void *vm_proc_dispatch_thread(void *);
 void *vcpu_run_loop(void *);
@@ -182,6 +182,7 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 	int			 res = 0, cmd = 0;
 	struct vmd_vm		*vm;
 	struct vm_terminate_params vtp;
+	struct vmop_id vid;
 	struct vmop_result	 vmr;
 	uint32_t		 id = 0;
 	unsigned int		 mode;
@@ -209,7 +210,7 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		}
 		break;
 	case IMSG_VMDOP_START_VM_END:
-		res = start_vm(imsg, &id);
+		res = start_vm(ps, imsg, &id);
 		cmd = IMSG_VMDOP_START_VM_RESPONSE;
 		break;
 	case IMSG_VMDOP_TERMINATE_VM_REQUEST:
@@ -242,20 +243,29 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		/* if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE, */
 		/*     imsg->hdr.peerid, -1, 1, sizeof(1)) == -1) */
 		/* 	return (-1); */
-		IMSG_SIZE_CHECK(imsg, &vtp);
-		memcpy(&vtp, imsg->data, sizeof(vtp));
-		id = vtp.vtp_vm_id;
+		/* IMSG_SIZE_CHECK(imsg, &vtp); */
+		IMSG_SIZE_CHECK(imsg, &vid);
+		memcpy(&vid, imsg->data, sizeof(vid));
+		id = vid.vid_id;
 		vmr.vmr_result = 0;
 		vmr.vmr_id = id;
 		log_info("recd %d", id);
-		if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE,
-		    imsg->hdr.peerid, -1, &vmr, sizeof(vmr)) == -1)
-			return (-1);
+		/* if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE, */
+		/*     imsg->hdr.peerid, -1, &vmr, sizeof(vmr)) == -1) */
+		/* 	return (-1); */
+		/* if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE, */
+		/*     imsg->hdr.peerid, -1, &vmr, sizeof(vmr)) == -1) */
+		/* 	return (-1); */
+		/* if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE, */
+		/*     imsg->hdr.peerid, -1, &vmr, sizeof(vmr)) == -1) */
+		/* 	return (-1); */
 		log_info("Hello from vmm!");
 		log_info("Sending to vmproc");
 		log_info("peer id %d", id);
 		if ((vm = vm_getbyid(id)) != NULL)
 			log_info("hey %d", vm->ibuf);
+		// should use imsg ev 
+		log_info("ps: %d", ps);
 		imsg_compose(vm->ibuf, IMSG_VMDOP_PAUSE_VM, imsg->hdr.peerid, getpid(), -1, NULL, 0);
 		imsg_flush(vm->ibuf);
 		log_info("no return?");
@@ -482,7 +492,7 @@ opentap(char *ifname)
  *  !0 : failure - typically an errno indicating the source of the failure
  */
 int
-start_vm(struct imsg *imsg, uint32_t *id)
+start_vm(struct privsep *ps, struct imsg *imsg, uint32_t *id)
 {
 	struct vm_create_params	*vcp;
 	struct vmboot_params	 vmboot;
@@ -559,7 +569,6 @@ start_vm(struct imsg *imsg, uint32_t *id)
 
 		*id = vcp->vcp_id;
 
-		log_info("This does return, no?");
 		return (0);
 	} else {
 		/* Child */
@@ -627,7 +636,7 @@ start_vm(struct imsg *imsg, uint32_t *id)
 			nicfds[i] = vm->vm_ifs[i].vif_fd;
 
 		/* Execute the vcpu run loop(s) for this VM */
-		ret = run_vm(vm->vm_disks, nicfds, vcp, &vrs, fds[1]);
+		ret = run_vm(ps, vm->vm_disks, nicfds, vcp, &vrs, fds[1]);
 
 		_exit(ret);
 	}
@@ -919,15 +928,19 @@ init_emulated_hw(struct vm_create_params *vcp, int *child_disks,
 }
 
 void*
-vm_proc_dispatch_thread(void* fd) {
-	int comm_fd = *((int *) fd);
+vm_proc_dispatch_thread(void* args) {
 	struct imsgbuf* ibuf;
 	struct imsg     imsg;
+	struct vmop_result vmr;
 	ssize_t         n, datalen;
 	int             idata;
+	struct vm_proc_dispatch_thread_args *t_args;
+	struct privsep *ps;
+	t_args = (struct vm_proc_dispatch_thread*) args;
+	ps = t_args->ps;
 	
 	ibuf = malloc(sizeof(struct imsgbuf));
-	imsg_init(ibuf, comm_fd);
+	imsg_init(ibuf, t_args->comm_fd);
 
 	if ((n = imsg_read(ibuf)) == -1 && errno != EAGAIN) {
 			fatal("%s: imsg_read", __func__);
@@ -950,17 +963,30 @@ vm_proc_dispatch_thread(void* fd) {
 			case IMSG_VMDOP_PAUSE_VM:
 				log_info("GOt pause imsg!");
 				if (datalen < sizeof idata) {
-					log_info("OW!");
 					/* handle corrupt message */
+
+					vmr.vmr_result = 0;
+					// get own vmid
+					vmr.vmr_id = 149;
+
+					// LOGIC TO PAUSE HERE
+
+					log_info("ps: %d", ps);
+					if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE,
+								imsg.hdr.peerid, -1, &vmr, sizeof(vmr)) == -1) {
+						log_info("err");
+					}
+					proc_flush_imsg(ps, PROC_PARENT, -1);
+
+
 				}
-				memcpy(&idata, imsg.data, sizeof idata);
+				/* memcpy(&idata, imsg.data, sizeof idata); */
 				/* handle message received */
 				break;
 		}
 
 		imsg_free(&imsg);
 	}
-
 
 }
 
@@ -981,7 +1007,7 @@ vm_proc_dispatch_thread(void* fd) {
  *  !0 : the VM exited abnormally or failed to start
  */
 int
-run_vm(int *child_disks, int *child_taps, struct vm_create_params *vcp,
+run_vm(struct privsep *ps, int *child_disks, int *child_taps, struct vm_create_params *vcp,
     struct vcpu_reg_state *vrs, int comm_fd)
 {
 	uint8_t evdone = 0;
@@ -990,6 +1016,7 @@ run_vm(int *child_disks, int *child_taps, struct vm_create_params *vcp,
 	pthread_t *tid, evtid, comm_tid;
 	struct vm_run_params **vrp;
 	void *exit_status;
+	struct vm_proc_dispatch_thread_args t_args;
 
 	if (vcp == NULL)
 		return (EINVAL);
@@ -1102,7 +1129,11 @@ run_vm(int *child_disks, int *child_taps, struct vm_create_params *vcp,
 			return (ret);
 		}
 	}
-	ret = pthread_create(&comm_tid, NULL, vm_proc_dispatch_thread, (void *) &comm_fd);
+	
+	t_args.ps = ps;
+	t_args.comm_fd = comm_fd;
+
+	ret = pthread_create(&comm_tid, NULL, vm_proc_dispatch_thread, (void *) &t_args);
 	if (ret) {
 		errno = ret;
 		log_warn("%s: could not create event thread", __func__);

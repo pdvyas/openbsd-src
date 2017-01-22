@@ -164,6 +164,8 @@ struct vmd_vm {
 	int			 vm_running;
 	/* When set, VM is not started by default (PROC_PARENT only) */
 	int			 vm_disabled;
+	/* When set, VM is pause */
+	int			 vm_paused;
 	struct imsgbuf* ibuf;
 	TAILQ_ENTRY(vmd_vm)	 vm_entry;
 };

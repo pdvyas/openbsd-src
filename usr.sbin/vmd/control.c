@@ -384,7 +384,7 @@ control_dispatch_imsg(int fd, short event, void *arg)
 			imsg.hdr.peerid = fd;
 			proc_compose_imsg(ps, PROC_PARENT, -1,
 			    imsg.hdr.type, imsg.hdr.peerid, -1,
-			    imsg.data, sizeof(imsg.data));
+			    imsg.data, IMSG_DATA_SIZE(&imsg));
 			break;
 		default:
 			log_debug("%s: error handling imsg %d",
