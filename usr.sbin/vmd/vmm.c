@@ -247,36 +247,18 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		config_getreset(env, imsg);
 		break;
 	case IMSG_VMDOP_PAUSE_VM:
-		/* if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE, */
-		/*     imsg->hdr.peerid, -1, 1, sizeof(1)) == -1) */
-		/* 	return (-1); */
-		/* IMSG_SIZE_CHECK(imsg, &vtp); */
+	case IMSG_VMDOP_UNPAUSE_VM:
+		log_info("got pause/unpause");
 		IMSG_SIZE_CHECK(imsg, &vid);
 		memcpy(&vid, imsg->data, sizeof(vid));
 		id = vid.vid_id;
-		vmr.vmr_result = 0;
-		vmr.vmr_id = id;
-		log_info("recd %d", id);
-		/* if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE, */
-		/*     imsg->hdr.peerid, -1, &vmr, sizeof(vmr)) == -1) */
-		/* 	return (-1); */
-		/* if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE, */
-		/*     imsg->hdr.peerid, -1, &vmr, sizeof(vmr)) == -1) */
-		/* 	return (-1); */
-		/* if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE, */
-		/*     imsg->hdr.peerid, -1, &vmr, sizeof(vmr)) == -1) */
-		/* 	return (-1); */
-		log_info("Hello from vmm!");
-		log_info("Sending to vmproc");
-		log_info("peer id %d", id);
-		if ((vm = vm_getbyid(id)) != NULL)
-			log_info("hey %d", vm->ibuf);
+		vm = vm_getbyid(id);
 		// should use imsg ev 
-		log_info("ps: %d", ps);
-		imsg_compose(vm->ibuf, IMSG_VMDOP_PAUSE_VM, imsg->hdr.peerid, getpid(), -1, NULL, 0);
+		// send vid?
+		imsg_compose(vm->ibuf, imsg->hdr.type, imsg->hdr.peerid, getpid(), -1, imsg->data, sizeof(vid));
 		imsg_flush(vm->ibuf);
-		log_info("no return?");
 		break;
+
 	default:
 		return (-1);
 	}
@@ -943,64 +925,76 @@ vm_proc_dispatch_thread(void* args) {
 	int             idata;
 	struct vm_proc_dispatch_thread_args *t_args;
 	struct privsep *ps;
+	int comm_fd;
 	t_args = (struct vm_proc_dispatch_thread*) args;
 	ps = t_args->ps;
+	comm_fd = t_args->comm_fd;
 	
 	ibuf = malloc(sizeof(struct imsgbuf));
-	imsg_init(ibuf, t_args->comm_fd);
+
+	if (fcntl(comm_fd, F_SETFL, O_NONBLOCK) == -1)
+		fatal("failed to set nonblocking mode on console");
+
+	imsg_init(ibuf, comm_fd);
 
 
 
-	if ((n = imsg_read(ibuf)) == -1 && errno != EAGAIN) {
-			fatal("%s: imsg_read", __func__);
-	}
-	if (n == 0) {
-		log_info("Connection closed");
-		/* handle closed connection */
-	}
+	/* if (n == 0) { */
+	/* 	log_info("Connection closed"); */
+	/* 	#<{(| handle closed connection |)}># */
+	/* } */
 
 	for (;;) {
-		if ((n = imsg_get(ibuf, &imsg)) == -1) {
-			fatal("%s: imsg_get", __func__);
-		}
-		if (n == 0)     /* no more messages */
-			return;
-		datalen = imsg.hdr.len - IMSG_HEADER_SIZE;
+		if (fd_hasdata(t_args->comm_fd)) {
+			if ((n = imsg_read(ibuf)) == -1 && errno != EAGAIN) {
+				fatal("%s: imsg_read", __func__);
+			}
+
+			if ((n = imsg_get(ibuf, &imsg)) == -1) {
+				fatal("%s: imsg_get", __func__);
+			}
+			if (n == 0)     /* no more messages */
+				continue;
+			datalen = imsg.hdr.len - IMSG_HEADER_SIZE;
 
 
-		switch (imsg.hdr.type) {
-			case IMSG_VMDOP_PAUSE_VM:
-				log_info("GOt pause imsg!");
-				if (datalen < sizeof idata) {
-					/* handle corrupt message */
+			switch (imsg.hdr.type) {
+				case IMSG_VMDOP_PAUSE_VM:
+					if (datalen < sizeof idata) {
+						/* handle corrupt message */
+					}
 
 					vmr.vmr_result = 0;
-					// get own vmid
-					vmr.vmr_id = 149;
 
 					// LOGIC TO PAUSE HERE
 					paused = 1;
 
-					sleep(10);
-					paused = 0;
-					pthread_cond_broadcast( &resume_cond );
-
-					log_info("ps: %d", ps);
 					if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE,
 								imsg.hdr.peerid, -1, &vmr, sizeof(vmr)) == -1) {
 						log_info("err");
 					}
 					proc_flush_imsg(ps, PROC_PARENT, -1);
 
-
-				}
-				/* memcpy(&idata, imsg.data, sizeof idata); */
-				/* handle message received */
-				break;
+					break;
+				case IMSG_VMDOP_UNPAUSE_VM:
+					// check if paused!! mutex!!
+					if (paused) {
+						paused = 0;
+						pthread_cond_broadcast( &resume_cond );
+					}
+					vmr.vmr_result = 0;
+					// get own vmid
+					vmr.vmr_id = 149;
+					if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_UNPAUSE_VM_RESPONSE,
+								imsg.hdr.peerid, -1, &vmr, sizeof(vmr)) == -1) {
+						log_info("err");
+					}
+					proc_flush_imsg(ps, PROC_PARENT, -1);
+					break;
+			}
 		}
-
-		imsg_free(&imsg);
 	}
+	imsg_free(&imsg);
 
 }
 
@@ -1263,7 +1257,7 @@ vcpu_run_loop(void *arg)
 		}
 
 		// HERE: block if paused
-		if( paused == 1 ) {
+		if (paused==1) {
 			pthread_mutex_lock(&pause_mutex);
 			pthread_cond_wait(&resume_cond, &pause_mutex);
 			pthread_mutex_unlock(&pause_mutex);
@@ -1696,6 +1690,7 @@ fd_hasdata(int fd)
 		log_warn("checking file descriptor for data failed");
 	else if (nready == 1 && pfd[0].revents & POLLIN)
 		hasdata = 1;
+	/* log_info("fd: %d", hasdata); */
 	return (hasdata);
 }
 

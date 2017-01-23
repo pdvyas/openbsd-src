@@ -756,7 +756,6 @@ proc_compose_imsg(struct privsep *ps, enum privsep_procid id, int n,
 
 	proc_range(ps, id, &n, &m);
 	for (; n < m; n++) {
-		log_info("target %d", ps->ps_ievs[id][n]);
 		if (imsg_compose_event(&ps->ps_ievs[id][n],
 		    type, peerid, ps->ps_instance + 1, fd, data, datalen) == -1)
 			return (-1);

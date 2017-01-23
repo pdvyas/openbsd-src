@@ -229,12 +229,9 @@ vmmaction(struct parse_result *res)
 	case CMD_CREATE:
 	case CMD_PAUSE:
 		pause_vm(res->id, res->name);
-		printf("Pause %d\n", res->id);
-		/* imsg_compose(ibuf, IMSG_VMDOP_PAUSE_VM, 0, 0, -1, NULL, 0); */
 		break;
 	case CMD_UNPAUSE:
-		printf("Unpause\n");
-		done = 1;
+		unpause_vm(res->id, res->name);
 		break;
 	case NONE:
 		break;
@@ -286,6 +283,9 @@ vmmaction(struct parse_result *res)
 				break;
 			case CMD_PAUSE:
 				done = pause_vm_complete(&imsg, &ret);
+				break;
+			case CMD_UNPAUSE:
+				done = unpause_vm_complete(&imsg, &ret);
 				break;
 			default:
 				done = 1;
