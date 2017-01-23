@@ -102,6 +102,13 @@ pthread_mutex_t vcpu_run_mtx[VMM_MAX_VCPUS_PER_VM];
 uint8_t vcpu_hlt[VMM_MAX_VCPUS_PER_VM];
 uint8_t vcpu_done[VMM_MAX_VCPUS_PER_VM];
 
+
+/// XXX(ashwin): Declare required pthread/mutex related globals
+pthread_mutex_t pause_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t resume_cond = PTHREAD_COND_INITIALIZER;
+int paused = 0;
+
+
 static struct privsep_proc procs[] = {
 	{ "parent",	PROC_PARENT,	vmm_dispatch_parent  },
 };
@@ -942,6 +949,8 @@ vm_proc_dispatch_thread(void* args) {
 	ibuf = malloc(sizeof(struct imsgbuf));
 	imsg_init(ibuf, t_args->comm_fd);
 
+
+
 	if ((n = imsg_read(ibuf)) == -1 && errno != EAGAIN) {
 			fatal("%s: imsg_read", __func__);
 	}
@@ -970,6 +979,11 @@ vm_proc_dispatch_thread(void* args) {
 					vmr.vmr_id = 149;
 
 					// LOGIC TO PAUSE HERE
+					paused = 1;
+
+					sleep(10);
+					paused = 0;
+					pthread_cond_broadcast( &resume_cond );
 
 					log_info("ps: %d", ps);
 					if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE,
@@ -1249,6 +1263,11 @@ vcpu_run_loop(void *arg)
 		}
 
 		// HERE: block if paused
+		if( paused == 1 ) {
+			pthread_mutex_lock(&pause_mutex);
+			pthread_cond_wait(&resume_cond, &pause_mutex);
+			pthread_mutex_unlock(&pause_mutex);
+		}
 
 		/* If we are halted, wait */
 		if (vcpu_hlt[n]) {
