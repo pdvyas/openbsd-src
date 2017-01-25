@@ -82,6 +82,7 @@ void vcpu_exit_inout(struct vm_run_params *);
 uint8_t vcpu_exit_pci(struct vm_run_params *);
 int vmm_dispatch_parent(int, struct privsep_proc *, struct imsg *);
 void vmm_run(struct privsep *, struct privsep_proc *, void *);
+void send_vm(int, struct vm_create_params *);
 int vcpu_pic_intr(uint32_t, uint32_t, uint8_t);
 
 static struct vm_mem_range *find_gpa_range(struct vm_create_params *, paddr_t,
@@ -175,7 +176,7 @@ vmm_run(struct privsep *ps, struct privsep_proc *p, void *arg)
 	 * proc - for forking and maitaining vms.
 	 * recvfd - for disks, interfaces and other fds.
 	 */
-	if (pledge("stdio vmm recvfd proc", NULL) == -1)
+	if (pledge("stdio vmm recvfd sendfd proc", NULL) == -1)
 		fatal("pledge");
 
 	/* Get and terminate all running VMs */
@@ -258,7 +259,14 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		imsg_compose(vm->ibuf, imsg->hdr.type, imsg->hdr.peerid, getpid(), -1, imsg->data, sizeof(vid));
 		imsg_flush(vm->ibuf);
 		break;
-
+	case IMSG_VMDOP_SEND_VM:
+		IMSG_SIZE_CHECK(imsg, &vid);
+		memcpy(&vid, imsg->data, sizeof(vid));
+		id = vid.vid_id;
+		vm = vm_getbyid(id);
+		imsg_compose(vm->ibuf, imsg->hdr.type, imsg->hdr.peerid, getpid(), imsg->fd, imsg->data, sizeof(vid));
+		imsg_flush(vm->ibuf);
+		break;
 	default:
 		return (-1);
 	}
@@ -547,11 +555,9 @@ start_vm(struct privsep *ps, struct imsg *imsg, uint32_t *id)
 		// XXX(pd): Reusing the fd to send imsgs. 
 		// initialize an imsgbuf and stick it to vmd_vm
 
-		log_info("ibuf: %d", vm->ibuf);
 		vm_ibuf = malloc(sizeof(struct imsgbuf));
 		imsg_init(vm_ibuf, fds[0]);
 		vm->ibuf = vm_ibuf;
-		log_info("ibuf: %d", vm->ibuf);
 
 		if (vcp->vcp_id == 0)
 			goto err;
@@ -590,7 +596,7 @@ start_vm(struct privsep *ps, struct imsg *imsg, uint32_t *id)
 	 	 * stdio - for malloc and basic I/O including events.
 		 * vmm - for the vmm ioctls and operations.
 		 */
-		if (pledge("stdio vmm", NULL) == -1)
+		if (pledge("stdio vmm sendfd recvfd", NULL) == -1)
 			fatal("pledge");
 
 		/*
@@ -925,10 +931,12 @@ vm_proc_dispatch_thread(void* args) {
 	int             idata;
 	struct vm_proc_dispatch_thread_args *t_args;
 	struct privsep *ps;
+	struct vm_create_params *vcp;
 	int comm_fd;
 	t_args = (struct vm_proc_dispatch_thread*) args;
 	ps = t_args->ps;
 	comm_fd = t_args->comm_fd;
+	vcp = t_args->vcp;
 	
 	ibuf = malloc(sizeof(struct imsgbuf));
 
@@ -991,11 +999,26 @@ vm_proc_dispatch_thread(void* args) {
 					}
 					proc_flush_imsg(ps, PROC_PARENT, -1);
 					break;
+				case IMSG_VMDOP_SEND_VM:
+					/* log_info("here!"); */
+					send_vm(imsg.fd, vcp);
+					break;
 			}
 		}
 	}
 	imsg_free(&imsg);
 
+}
+
+void send_vm(int fd, struct vm_create_params *vcp) {
+	int i;
+	struct vm_mem_range *vmr;
+	for (i = 0; i < vcp->vcp_nmemranges; i++) {
+		vmr = &vcp->vcp_memranges[i];
+		write(fd, "hello\n", 6);
+		log_info("hello %d\n", vmr->vmr_size);
+	}
+	close(fd);
 }
 
 /*
@@ -1140,6 +1163,7 @@ run_vm(struct privsep *ps, int *child_disks, int *child_taps, struct vm_create_p
 	
 	t_args.ps = ps;
 	t_args.comm_fd = comm_fd;
+	t_args.vcp = vcp;
 
 	ret = pthread_create(&comm_tid, NULL, vm_proc_dispatch_thread, (void *) &t_args);
 	if (ret) {
@@ -1685,7 +1709,7 @@ fd_hasdata(int fd)
 
 	pfd[0].fd = fd;
 	pfd[0].events = POLLIN;
-	nready = poll(pfd, 1, 0);
+	nready = poll(pfd, 1, 1000);
 	if (nready == -1)
 		log_warn("checking file descriptor for data failed");
 	else if (nready == 1 && pfd[0].revents & POLLIN)

@@ -23,4 +23,5 @@ void vcpu_assert_pic_irq(uint32_t, uint32_t, int);
 struct vm_proc_dispatch_thread_args {
 	int comm_fd;
 	struct privsep *ps;
+	struct vm_create_params *vcp;
 };

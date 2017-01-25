@@ -71,7 +71,7 @@ control_run(struct privsep *ps, struct privsep_proc *p, void *arg)
 	 * unix - for the control socket.
 	 * recvfd - for the proc fd exchange.
 	 */
-	if (pledge("stdio cpath unix recvfd", NULL) == -1)
+	if (pledge("stdio cpath unix recvfd sendfd", NULL) == -1)
 		fatal("pledge");
 }
 
@@ -321,10 +321,17 @@ control_dispatch_imsg(int fd, short event, void *arg)
 		if (n == 0)
 			break;
 
+		log_info("hdr: %d", imsg.hdr.type);
+		/* log_info("hdr: %d", IMSG_VMDOP_SEND_VM); */
+
 		switch (imsg.hdr.type) {
 		case IMSG_VMDOP_GET_INFO_VM_REQUEST:
 			break;
-		default:
+		case IMSG_VMDOP_SEND_VM:
+			log_info("writing from control");
+			proc_forward_imsg(ps, &imsg, PROC_PARENT, -1);
+
+			break;
 			if (c->peercred.uid != 0) {
 				log_warnx("denied request %d from uid %d",
 				    imsg.hdr.type, c->peercred.uid);

@@ -136,6 +136,11 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 		proc_compose_imsg(ps, PROC_VMM, -1, imsg->hdr.type,
 				imsg->hdr.peerid, -1, imsg->data, IMSG_DATA_SIZE(imsg));
 		break;
+	case IMSG_VMDOP_SEND_VM:
+		IMSG_SIZE_CHECK(imsg, &vid);
+		proc_compose_imsg(ps, PROC_VMM, -1, imsg->hdr.type,
+				imsg->hdr.peerid, imsg->fd, imsg->data, IMSG_DATA_SIZE(imsg));
+		break;
 	default:
 		return (-1);
 	}
@@ -494,7 +499,7 @@ vmd_configure(void)
 	 * proc - run kill to terminate its children safely.
 	 * sendfd - for disks, interfaces and other fds.
 	 */
-	if (pledge("stdio rpath wpath proc tty sendfd", NULL) == -1)
+	if (pledge("stdio rpath wpath proc tty recvfd sendfd", NULL) == -1)
 		fatal("pledge");
 
 	if (parse_config(env->vmd_conffile) == -1) {

@@ -33,6 +33,8 @@ enum actions {
 	CMD_STOP,
 	CMD_PAUSE,
 	CMD_UNPAUSE,
+	CMD_SEND,
+	CMD_RECEIVE,
 };
 
 struct ctl_command;
@@ -84,6 +86,8 @@ int	 terminate_vm_complete(struct imsg *, int *);
 void	 pause_vm(uint32_t, const char *);
 int	 pause_vm_complete(struct imsg *, int *);
 void	 unpause_vm(uint32_t, const char *);
+void	 send_vm(uint32_t, const char *);
+void	 receive_vm(uint32_t, const char *);
 int	 unpause_vm_complete(struct imsg *, int *);
 int	 check_info_id(const char *, uint32_t);
 void	 get_info_vm(uint32_t, const char *, int);
