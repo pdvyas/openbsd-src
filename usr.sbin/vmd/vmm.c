@@ -83,8 +83,10 @@ uint8_t vcpu_exit_pci(struct vm_run_params *);
 int vmm_dispatch_parent(int, struct privsep_proc *, struct imsg *);
 void vmm_run(struct privsep *, struct privsep_proc *, void *);
 void send_vm(int, struct vm_create_params *);
+void mwrite(int , struct vm_mem_range *);
+void pause_vm();
+void unpause_vm();
 int vcpu_pic_intr(uint32_t, uint32_t, uint8_t);
-
 static struct vm_mem_range *find_gpa_range(struct vm_create_params *, paddr_t,
     size_t);
 
@@ -972,10 +974,9 @@ vm_proc_dispatch_thread(void* args) {
 						/* handle corrupt message */
 					}
 
-					vmr.vmr_result = 0;
 
-					// LOGIC TO PAUSE HERE
-					paused = 1;
+					vmr.vmr_result = 0;
+					pause_vm();
 
 					if (proc_compose_imsg(ps, PROC_PARENT, -1, IMSG_VMDOP_PAUSE_VM_RESPONSE,
 								imsg.hdr.peerid, -1, &vmr, sizeof(vmr)) == -1) {
@@ -985,11 +986,8 @@ vm_proc_dispatch_thread(void* args) {
 
 					break;
 				case IMSG_VMDOP_UNPAUSE_VM:
+					unpause_vm();
 					// check if paused!! mutex!!
-					if (paused) {
-						paused = 0;
-						pthread_cond_broadcast( &resume_cond );
-					}
 					vmr.vmr_result = 0;
 					// get own vmid
 					vmr.vmr_id = 149;
@@ -1000,7 +998,7 @@ vm_proc_dispatch_thread(void* args) {
 					proc_flush_imsg(ps, PROC_PARENT, -1);
 					break;
 				case IMSG_VMDOP_SEND_VM:
-					/* log_info("here!"); */
+					log_info("here!");
 					send_vm(imsg.fd, vcp);
 					break;
 			}
@@ -1013,12 +1011,38 @@ vm_proc_dispatch_thread(void* args) {
 void send_vm(int fd, struct vm_create_params *vcp) {
 	int i;
 	struct vm_mem_range *vmr;
+	pause_vm();
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
-		write(fd, "hello\n", 6);
-		log_info("hello %d\n", vmr->vmr_size);
+		log_info("writing to fd %d\n", vmr->vmr_size);
+		mwrite(fd, vmr);
 	}
+	unpause_vm();
 	close(fd);
+	log_info("DONE!");
+}
+
+void mwrite(int fd, struct vm_mem_range *vmr) {
+	size_t rem = vmr->vmr_size, read=0;
+	char buf[PAGE_SIZE];
+	while (rem > 0) {
+		read_mem(vmr->vmr_gpa + read, buf, PAGE_SIZE);
+		write(fd, buf, PAGE_SIZE);
+		rem = rem - PAGE_SIZE;
+		read = read + PAGE_SIZE;
+	}
+
+}
+
+void pause_vm() {
+	paused = 1;
+
+}
+void unpause_vm() {
+	if (paused) {
+		paused = 0;
+		pthread_cond_broadcast( &resume_cond );
+	}
 }
 
 /*
