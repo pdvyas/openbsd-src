@@ -71,7 +71,7 @@ control_run(struct privsep *ps, struct privsep_proc *p, void *arg)
 	 * unix - for the control socket.
 	 * recvfd - for the proc fd exchange.
 	 */
-	if (pledge("stdio cpath unix recvfd", NULL) == -1)
+	if (pledge("stdio cpath unix recvfd sendfd", NULL) == -1)
 		fatal("pledge");
 }
 
@@ -82,6 +82,8 @@ control_dispatch_vmd(int fd, struct privsep_proc *p, struct imsg *imsg)
 
 	switch (imsg->hdr.type) {
 	case IMSG_VMDOP_START_VM_RESPONSE:
+	case IMSG_VMDOP_PAUSE_VM_RESPONSE:
+	case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
 	case IMSG_VMDOP_TERMINATE_VM_RESPONSE:
 	case IMSG_VMDOP_GET_INFO_VM_DATA:
 	case IMSG_VMDOP_GET_INFO_VM_END_DATA:
@@ -357,6 +359,8 @@ control_dispatch_imsg(int fd, short event, void *arg)
 		case IMSG_VMDOP_START_VM_REQUEST:
 		case IMSG_VMDOP_TERMINATE_VM_REQUEST:
 		case IMSG_VMDOP_GET_INFO_VM_REQUEST:
+		case IMSG_VMDOP_PAUSE_VM:
+		case IMSG_VMDOP_UNPAUSE_VM:
 			imsg.hdr.peerid = fd;
 
 			if (proc_compose_imsg(ps, PROC_PARENT, -1,
@@ -369,6 +373,7 @@ control_dispatch_imsg(int fd, short event, void *arg)
 		case IMSG_VMDOP_LOAD:
 		case IMSG_VMDOP_RELOAD:
 		case IMSG_CTL_RESET:
+		case IMSG_VMDOP_SEND_VM:
 			proc_forward_imsg(ps, &imsg, PROC_PARENT, -1);
 			break;
 		default:
