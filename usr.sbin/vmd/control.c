@@ -370,10 +370,17 @@ control_dispatch_imsg(int fd, short event, void *arg)
 				return;
 			}
 			break;
+		case IMSG_VMDOP_SEND_VM:
+			if (proc_compose_imsg(ps, PROC_PARENT, -1,
+			    imsg.hdr.type, imsg.hdr.peerid, imsg.fd,
+			    imsg.data, IMSG_DATA_SIZE(&imsg)) == -1) {
+				control_close(fd, cs);
+				return;
+			}
+			break;
 		case IMSG_VMDOP_LOAD:
 		case IMSG_VMDOP_RELOAD:
 		case IMSG_CTL_RESET:
-		case IMSG_VMDOP_SEND_VM:
 			proc_forward_imsg(ps, &imsg, PROC_PARENT, -1);
 			break;
 		default:

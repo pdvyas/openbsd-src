@@ -81,6 +81,10 @@ void vcpu_exit_inout(struct vm_run_params *);
 uint8_t vcpu_exit_pci(struct vm_run_params *);
 int vmm_dispatch_parent(int, struct privsep_proc *, struct imsg *);
 void vmm_run(struct privsep *, struct privsep_proc *, void *);
+void send_vm(int, struct vm_create_params *);
+void mwrite(int , struct vm_mem_range *);
+void pause_vm();
+void unpause_vm();
 int vcpu_pic_intr(uint32_t, uint32_t, uint8_t);
 
 int vmm_pipe(struct vmd_vm *, int, void (*)(int, short, void *));
@@ -92,6 +96,7 @@ static struct vm_mem_range *find_gpa_range(struct vm_create_params *, paddr_t,
 
 int con_fd;
 struct vmd_vm *current_vm;
+struct privsep *vmm_ps;
 
 extern struct vmd *env;
 
@@ -104,6 +109,11 @@ pthread_cond_t vcpu_run_cond[VMM_MAX_VCPUS_PER_VM];
 pthread_mutex_t vcpu_run_mtx[VMM_MAX_VCPUS_PER_VM];
 uint8_t vcpu_hlt[VMM_MAX_VCPUS_PER_VM];
 uint8_t vcpu_done[VMM_MAX_VCPUS_PER_VM];
+
+/// XXX(ashwin): Declare required pthread/mutex related globals
+pthread_mutex_t pause_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t resume_cond = PTHREAD_COND_INITIALIZER;
+int paused = 0;
 
 static struct privsep_proc procs[] = {
 	{ "parent",	PROC_PARENT,	vmm_dispatch_parent  },
@@ -171,7 +181,7 @@ vmm_run(struct privsep *ps, struct privsep_proc *p, void *arg)
 	 * proc - for forking and maitaining vms.
 	 * recvfd - for disks, interfaces and other fds.
 	 */
-	if (pledge("stdio vmm recvfd proc", NULL) == -1)
+	if (pledge("stdio vmm recvfd sendfd proc", NULL) == -1)
 		fatal("pledge");
 
 	/* Get and terminate all running VMs */
@@ -185,9 +195,12 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 	int			 res = 0, cmd = 0, verbose;
 	struct vmd_vm		*vm;
 	struct vm_terminate_params vtp;
+	struct vmop_id vid;
 	struct vmop_result	 vmr;
 	uint32_t		 id = 0;
 	unsigned int		 mode;
+
+	vmm_ps = ps;
 
 	switch (imsg->hdr.type) {
 	case IMSG_VMDOP_START_VM_REQUEST:
@@ -272,6 +285,19 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 			    imsg->hdr.type, imsg->hdr.peerid, imsg->hdr.pid,
 			    -1, &verbose, sizeof(verbose));
 		}
+		break;
+	case IMSG_VMDOP_PAUSE_VM:
+	case IMSG_VMDOP_UNPAUSE_VM:
+	case IMSG_VMDOP_SEND_VM:
+		// XXX: Add code to forward imsg here
+		log_info("Received pause/unpause request");
+		IMSG_SIZE_CHECK(imsg, &vid);
+		memcpy(&vid, imsg->data, sizeof(vid));
+		id = vid.vid_id;
+		vm = vm_getbyid(id);
+		imsg_compose_event(&vm->vm_iev,
+			imsg->hdr.type, imsg->hdr.peerid, imsg->hdr.pid,
+			imsg->fd, &vid, sizeof(vid));
 		break;
 	default:
 		return (-1);
@@ -446,10 +472,14 @@ vmm_dispatch_vm(int fd, short event, void *arg)
 #endif
 
 		switch (imsg.hdr.type) {
+		case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
+		case IMSG_VMDOP_PAUSE_VM_RESPONSE:
+			proc_forward_imsg(vmm_ps, &imsg, PROC_PARENT, -1);
+			break;
 		default:
 			fatalx("%s: got invalid imsg %d from %s",
-			    __func__, imsg.hdr.type,
-			    vm->vm_params.vmc_params.vcp_name);
+					__func__, imsg.hdr.type,
+					vm->vm_params.vmc_params.vcp_name);
 		}
 		imsg_free(&imsg);
 	}
@@ -460,6 +490,7 @@ void
 vm_dispatch_vmm(int fd, short event, void *arg)
 {
 	struct vmd_vm		*vm = arg;
+	struct vmop_result vmr;
 	struct imsgev		*iev = &vm->vm_iev;
 	struct imsgbuf		*ibuf = &iev->ibuf;
 	struct imsg		 imsg;
@@ -506,6 +537,30 @@ vm_dispatch_vmm(int fd, short event, void *arg)
 			if (vmmci_ctl(VMMCI_REBOOT) == -1)
 				_exit(0);
 			break;
+		case IMSG_VMDOP_PAUSE_VM:
+			vmr.vmr_result = 0;
+			vmr.vmr_id = vm->vm_params.vmc_params.vcp_id;
+			pause_vm();
+			log_info("paused vm: %d", vmr.vmr_id);
+			imsg_compose_event(&vm->vm_iev,
+				IMSG_VMDOP_PAUSE_VM_RESPONSE, imsg.hdr.peerid, imsg.hdr.pid,
+				-1, &vmr, sizeof(vmr));
+			break;
+		case IMSG_VMDOP_UNPAUSE_VM:
+			vmr.vmr_result = 0;
+			vmr.vmr_id = vm->vm_params.vmc_params.vcp_id;
+			unpause_vm();
+			log_info("unpaused vm: %d", vmr.vmr_id);
+			imsg_compose_event(&vm->vm_iev,
+				IMSG_VMDOP_UNPAUSE_VM_RESPONSE, imsg.hdr.peerid, imsg.hdr.pid,
+				-1, &vmr, sizeof(vmr));
+			break;
+		case IMSG_VMDOP_SEND_VM:
+			log_info("send!!");
+			vmr.vmr_result = 0;
+			vmr.vmr_id = vm->vm_params.vmc_params.vcp_id;
+			send_vm(imsg.fd, &vm->vm_params.vmc_params);
+			break;
 		default:
 			fatalx("%s: got invalid imsg %d from %s",
 			    __func__, imsg.hdr.type,
@@ -514,6 +569,44 @@ vm_dispatch_vmm(int fd, short event, void *arg)
 		imsg_free(&imsg);
 	}
 	imsg_event_add(iev);
+}
+
+void send_vm(int fd, struct vm_create_params *vcp) {
+	int i;
+	struct vm_mem_range *vmr;
+	/* pause_vm(); */
+	for (i = 0; i < vcp->vcp_nmemranges; i++) {
+		vmr = &vcp->vcp_memranges[i];
+		log_info("writing to fd %d\n", vmr->vmr_size);
+		mwrite(fd, vmr);
+	}
+	/* unpause_vm(); */
+	close(fd);
+	log_info("DONE!");
+}
+
+void mwrite(int fd, struct vm_mem_range *vmr) {
+	size_t rem = vmr->vmr_size, read=0;
+	int i;
+	char buf[PAGE_SIZE];
+	while (rem > 0) {
+		read_mem(vmr->vmr_gpa + read, buf, PAGE_SIZE);
+		i = write(fd, buf, PAGE_SIZE);
+		rem = rem - PAGE_SIZE;
+		read = read + PAGE_SIZE;
+	}
+
+}
+
+void pause_vm() {
+	paused = 1;
+
+}
+void unpause_vm() {
+	if (paused) {
+		paused = 0;
+		pthread_cond_broadcast(&resume_cond);
+	}
 }
 
 /*
@@ -731,7 +824,7 @@ start_vm(struct imsg *imsg, uint32_t *id)
 		 * stdio - for malloc and basic I/O including events.
 		 * vmm - for the vmm ioctls and operations.
 		 */
-		if (pledge("stdio vmm", NULL) == -1)
+		if (pledge("stdio vmm recvfd", NULL) == -1)
 			fatal("pledge");
 
 		/*
@@ -1305,6 +1398,12 @@ vcpu_run_loop(void *arg)
 			log_warnx("%s: can't lock vcpu run mtx (%d)",
 			    __func__, (int)ret);
 			return ((void *)ret);
+		}
+		// Pause execution if paused
+		if (paused==1) {
+			pthread_mutex_lock(&pause_mutex);
+			pthread_cond_wait(&resume_cond, &pause_mutex);
+			pthread_mutex_unlock(&pause_mutex);
 		}
 
 		/* If we are halted, wait */
