@@ -84,7 +84,7 @@ void vmm_run(struct privsep *, struct privsep_proc *, void *);
 void send_vm(int, struct vm_create_params *);
 void mwrite(int , struct vm_mem_range *);
 void pause_vm();
-void unpause_vm();
+void unpause_vm(struct vm_create_params *);
 int vcpu_pic_intr(uint32_t, uint32_t, uint8_t);
 
 int vmm_pipe(struct vmd_vm *, int, void (*)(int, short, void *));
@@ -549,7 +549,7 @@ vm_dispatch_vmm(int fd, short event, void *arg)
 		case IMSG_VMDOP_UNPAUSE_VM:
 			vmr.vmr_result = 0;
 			vmr.vmr_id = vm->vm_params.vmc_params.vcp_id;
-			unpause_vm();
+			unpause_vm(&vm->vm_params.vmc_params);
 			log_info("unpaused vm: %d", vmr.vmr_id);
 			imsg_compose_event(&vm->vm_iev,
 				IMSG_VMDOP_UNPAUSE_VM_RESPONSE, imsg.hdr.peerid, imsg.hdr.pid,
@@ -599,13 +599,18 @@ void mwrite(int fd, struct vm_mem_range *vmr) {
 }
 
 void pause_vm() {
-	paused = 1;
+	if (paused == 0) {
+		paused = 1;
 
+	}
 }
-void unpause_vm() {
+void unpause_vm(struct vm_create_params *vcp) {
 	if (paused) {
 		paused = 0;
-		pthread_cond_broadcast(&resume_cond);
+		int n;
+		for (n = 0; n <= vcp->vcp_ncpus; n++) {
+			pthread_cond_broadcast(&vcpu_run_cond[n]);
+		}
 	}
 }
 
@@ -1400,14 +1405,8 @@ vcpu_run_loop(void *arg)
 			return ((void *)ret);
 		}
 		// Pause execution if paused
-		if (paused==1) {
-			pthread_mutex_lock(&pause_mutex);
-			pthread_cond_wait(&resume_cond, &pause_mutex);
-			pthread_mutex_unlock(&pause_mutex);
-		}
-
 		/* If we are halted, wait */
-		if (vcpu_hlt[n]) {
+		if (vcpu_hlt[n] || paused) {
 			ret = pthread_cond_wait(&vcpu_run_cond[n],
 			    &vcpu_run_mtx[n]);
 
