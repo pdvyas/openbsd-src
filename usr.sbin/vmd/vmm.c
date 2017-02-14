@@ -97,6 +97,7 @@ static struct vm_mem_range *find_gpa_range(struct vm_create_params *, paddr_t,
 
 int con_fd;
 struct vmd_vm *current_vm;
+struct vm_run_params **current_vm_vrp;
 struct privsep *vmm_ps;
 
 extern struct vmd *env;
@@ -584,8 +585,40 @@ void receive_vm(int fd) {
 
 void send_vm(int fd, struct vm_create_params *vcp) {
 	int i;
+	int ret;
+	char buf[PAGE_SIZE];
 	struct vm_mem_range *vmr;
+	struct vm_rwregs_params vrp;
 	pause_vm();
+
+	vrp.vrwp_vm_id = vcp->vcp_id;
+	log_info("vcp_id %d", vcp->vcp_id);
+
+	for (i = 0; i < vcp->vcp_ncpus; i++) {
+		vrp.vrwp_vcpu_id = i;
+		if (ioctl(env->vmd_fd, VMM_IOC_READREGS, &vrp) < 0) {
+			log_info ("readregs IOC error: %d, %d", errno, ENOENT);
+		}
+	}
+
+	/* memcpy(&buf, vcp, sizeof(struct vm_create_params)); */
+	/* ret = write(fd, buf, sizeof(struct vm_create_params)); */
+	ret = write(fd, vcp, sizeof(struct vm_create_params));
+	log_info("write ret: %d", ret);
+
+	/* memcpy(&buf, vcp, sizeof(struct vm_rwregs_params)); */
+	ret = write(fd, vcp, sizeof(struct vm_rwregs_params));
+	log_info("write ret: %d", ret);
+
+	log_info("vcp size: %d", sizeof(struct vm_create_params));
+	log_info("regs size: %d", sizeof(struct vm_rwregs_params));
+
+    /*  */
+	/* if (ioctl(env->vmd_fd, VMM_IOC_READREGS, &vm_regs2) < 0) { */
+	/* 	log_info ("readregs IOC error: %d", errno); */
+	/* } */
+
+
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
 		log_info("writing to fd %d\n", vmr->vmr_size);
@@ -1415,8 +1448,8 @@ vcpu_run_loop(void *arg)
 			    __func__, (int)ret);
 			return ((void *)ret);
 		}
-		// Pause execution if paused
-		/* If we are halted, wait */
+
+		/* If we are halted or paused, wait */
 		if (vcpu_hlt[n] || paused) {
 			ret = pthread_cond_wait(&vcpu_run_cond[n],
 			    &vcpu_run_mtx[n]);

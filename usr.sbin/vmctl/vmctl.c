@@ -186,7 +186,7 @@ send_vm(uint32_t id, const char *name)
 {
 	struct vmop_id vid;
 	int fds[2], ret;
-	char buf[256] = {NULL};
+	char buf[4096] = {NULL};
 
 	memset(&vid, 0, sizeof(vid));
 	vid.vid_id = id;
@@ -208,7 +208,7 @@ send_vm(uint32_t id, const char *name)
 	printf("Ret: %d\n", ret);
 	printf("Reading from fd\n");
 	while(1) {
-		ret = read(fds[0], buf, 255);
+		ret = read(fds[0], buf, 4095);
 		if(!ret) {
 			break;
 		}
