@@ -84,6 +84,7 @@ void vmm_run(struct privsep *, struct privsep_proc *, void *);
 void send_vm(int, struct vm_create_params *);
 void mwrite(int , struct vm_mem_range *);
 void pause_vm();
+void receive_vm(int);
 void unpause_vm(struct vm_create_params *);
 int vcpu_pic_intr(uint32_t, uint32_t, uint8_t);
 
@@ -289,8 +290,6 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 	case IMSG_VMDOP_PAUSE_VM:
 	case IMSG_VMDOP_UNPAUSE_VM:
 	case IMSG_VMDOP_SEND_VM:
-		// XXX: Add code to forward imsg here
-		log_info("Received pause/unpause request");
 		IMSG_SIZE_CHECK(imsg, &vid);
 		memcpy(&vid, imsg->data, sizeof(vid));
 		id = vid.vid_id;
@@ -298,6 +297,13 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		imsg_compose_event(&vm->vm_iev,
 			imsg->hdr.type, imsg->hdr.peerid, imsg->hdr.pid,
 			imsg->fd, &vid, sizeof(vid));
+		break;
+	case IMSG_VMDOP_RECEIVE_VM:
+		IMSG_SIZE_CHECK(imsg, &vid);
+		memcpy(&vid, imsg->data, sizeof(vid));
+		id = vid.vid_id;
+		vm = vm_getbyid(id);
+		receive_vm(imsg->fd);
 		break;
 	default:
 		return (-1);
@@ -556,7 +562,6 @@ vm_dispatch_vmm(int fd, short event, void *arg)
 				-1, &vmr, sizeof(vmr));
 			break;
 		case IMSG_VMDOP_SEND_VM:
-			log_info("send!!");
 			vmr.vmr_result = 0;
 			vmr.vmr_id = vm->vm_params.vmc_params.vcp_id;
 			send_vm(imsg.fd, &vm->vm_params.vmc_params);
@@ -571,16 +576,22 @@ vm_dispatch_vmm(int fd, short event, void *arg)
 	imsg_event_add(iev);
 }
 
+void receive_vm(int fd) {
+	char buf[256];
+	read(fd, buf, 256);
+	log_info("Received: %s", buf);
+}
+
 void send_vm(int fd, struct vm_create_params *vcp) {
 	int i;
 	struct vm_mem_range *vmr;
-	/* pause_vm(); */
+	pause_vm();
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
 		log_info("writing to fd %d\n", vmr->vmr_size);
 		mwrite(fd, vmr);
 	}
-	/* unpause_vm(); */
+	unpause_vm(vcp);
 	close(fd);
 	log_info("DONE!");
 }

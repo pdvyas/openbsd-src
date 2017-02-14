@@ -371,6 +371,7 @@ control_dispatch_imsg(int fd, short event, void *arg)
 			}
 			break;
 		case IMSG_VMDOP_SEND_VM:
+		case IMSG_VMDOP_RECEIVE_VM:
 			if (proc_compose_imsg(ps, PROC_PARENT, -1,
 			    imsg.hdr.type, imsg.hdr.peerid, imsg.fd,
 			    imsg.data, IMSG_DATA_SIZE(&imsg)) == -1) {

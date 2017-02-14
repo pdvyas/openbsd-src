@@ -222,17 +222,36 @@ send_vm(uint32_t id, const char *name)
 }
 
 void
-receive_vm(uint32_t pause_id, const char *name)
+receive_vm(uint32_t id, const char *name)
 {
 	struct vmop_id vid;
+	int fds[2], ret;
+	char buf[256] = {NULL};
 
 	memset(&vid, 0, sizeof(vid));
-	vid.vid_id = pause_id;
+	vid.vid_id = id;
 	if (name != NULL)
 		(void)strlcpy(vid.vid_name, name, sizeof(vid.vid_name));
 
-	imsg_compose(ibuf, IMSG_VMDOP_PAUSE_VM, 0, 0, -1,
+	if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fds) == -1)
+		warnx("socketpair");
+
+	ret = imsg_compose(ibuf, IMSG_VMDOP_RECEIVE_VM, 0, 0, fds[1],
 	    &vid, sizeof(vid));
+
+	while (ibuf->w.queued)
+		if (msgbuf_write(&ibuf->w) <= 0 && errno != EAGAIN)
+			err(1, "write error");
+
+	printf("Ret: %d\n", ret);
+	printf("Writing to fd\n");
+	while(1) {
+		ret = read(0, buf, 255);
+		if(!ret) {
+			break;
+		}
+		write(fds[0], buf, ret);
+	}
 }
 
 void

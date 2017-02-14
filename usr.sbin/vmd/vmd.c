@@ -145,6 +145,7 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 				imsg->hdr.peerid, -1, imsg->data, IMSG_DATA_SIZE(imsg));
 		break;
 	case IMSG_VMDOP_SEND_VM:
+	case IMSG_VMDOP_RECEIVE_VM:
 		IMSG_SIZE_CHECK(imsg, &vid);
 		proc_compose_imsg(ps, PROC_VMM, -1, imsg->hdr.type,
 				imsg->hdr.peerid, imsg->fd, imsg->data, IMSG_DATA_SIZE(imsg));
