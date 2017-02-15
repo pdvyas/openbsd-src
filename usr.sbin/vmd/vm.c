@@ -262,7 +262,6 @@ start_vm(struct vmd_vm *vm, int fd)
 	setproctitle("%s", vcp->vcp_name);
 	log_procinit(vcp->vcp_name);
 
-	log_debug("--->>>>> vm_received: %d", vm->vm_received);
 	create_memory_map(vcp);
 	ret = alloc_guest_mem(vcp);
 	if (ret) {
@@ -1031,6 +1030,7 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
 		vregsp.vrwp_regs = *vrs;
 		vregsp.vrwp_mask = -1;
 
+		// XXX: Once more becuase reset_cpu changes regs
 		if (received) {
 			if (ioctl(env->vmd_fd, VMM_IOC_WRITEREGS, &vregsp) < 0) {
 				log_info ("readregs IOC error: %d, %d", errno, ENOENT);
@@ -1177,7 +1177,13 @@ vcpu_run_loop(void *arg)
 			    __func__, (int)ret);
 			return ((void *)ret);
 		}
-
+		
+		/* if (ioctl(env->vmd_fd, VMM_IOC_READREGS, &vmrp) < 0) { */
+ 		/* 	log_info ("readregs IOC error: %d, %d", errno, ENOENT); */
+ 		/* } */
+ 		/* dump_regs(&vmrp.vrwp_regs); */
+ 
+ 		/* If we are halted or paused, wait */
 		if (vcpu_hlt[n]) {
 			if (paused == 1) {
 				paused_vcpus += 1;

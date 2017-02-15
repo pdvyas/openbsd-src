@@ -1834,8 +1834,7 @@ viornd_restore(FILE *fp) {
 void
 vionet_restore(FILE *fp, struct vm_create_params *vcp, int *child_taps) {
 	int ret;
-	unsigned int i;
-	uint8_t id;
+	uint8_t i, id;
 	nr_vionet = vcp->vcp_nnics;
 	if (vcp->vcp_nnics > 0) {
 		vionet = calloc(vcp->vcp_nnics, sizeof(struct vionet_dev));
@@ -1892,16 +1891,16 @@ vionet_restore(FILE *fp, struct vm_create_params *vcp, int *child_taps) {
 
 void 
 vioblk_restore(FILE *fp, struct vm_create_params *vcp, int *child_disks) {
-	unsigned int i;
+	uint8_t i;
 	int  ret;
-	size_t sz;
+	off_t sz;
 	uint8_t id;
 
 	nr_vioblk = vcp->vcp_ndisks;
 	vioblk = calloc(vcp->vcp_ndisks, sizeof(struct vioblk_dev));
 	ret = fread(vioblk, nr_vioblk, sizeof(struct vioblk_dev), fp);
 	for (i = 0; i < vcp->vcp_ndisks; i++) {
-		if ((sz = lseek(child_disks[i], 0, SEEK_END)) == (unsigned) -1)
+		if ((sz = lseek(child_disks[i], 0, SEEK_END)) == -1)
 			continue;
 
 		if (pci_add_device(&id, PCI_VENDOR_QUMRANET,

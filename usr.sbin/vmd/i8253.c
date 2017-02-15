@@ -354,6 +354,7 @@ void
 i8253_dump(int fd) {
 	int ret;
 	ret = write(fd, &i8253_counter, sizeof(i8253_counter));
+	log_debug("Sending PIT");
 }
 
 
@@ -373,6 +374,7 @@ i8253_restore(FILE *fp, uint32_t vm_id) {
 	evtimer_set(&i8253_counter[1].timer, i8253_fire, &i8253_counter[1]);
 	evtimer_set(&i8253_counter[2].timer, i8253_fire, &i8253_counter[2]);
 	i8253_reset(0);
+	log_debug("Receiving PIT");
 }
 
 void

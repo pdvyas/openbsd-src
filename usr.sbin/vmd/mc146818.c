@@ -311,6 +311,7 @@ void
 mc146818_dump(int fd) {
 	int ret;
 	ret = write(fd, &rtc, sizeof(rtc));
+	log_debug("Sending RTC");
 }
 
 void
@@ -326,6 +327,7 @@ mc146818_restore(FILE *fp, uint32_t vm_id) {
 
 	evtimer_add(&rtc.per, &rtc.per_tv);
 	evtimer_add(&rtc.sec, &rtc.sec_tv);
+	log_debug("Receiving RTC");
 }
 
 void
