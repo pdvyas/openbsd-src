@@ -654,7 +654,6 @@ void
 i8259_dump(int fd) {
 	int ret;
 	ret = write(fd, &pics, sizeof(pics));
-	log_info("dump pic %d", ret);
 }
 
 
@@ -662,6 +661,5 @@ void
 i8259_restore(FILE *fp) {
 	int ret;
 	ret = fread(&pics, 1,  sizeof(pics), fp);
-	log_info("restore pic %d", ret);
 }
 

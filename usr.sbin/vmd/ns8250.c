@@ -490,7 +490,6 @@ void
 ns8250_dump(int fd) {
 	int ret;
 	ret = write(fd, &com1_dev.regs, sizeof(com1_dev.regs));
-	log_info("dump 8250 %d", ret);
 }
 
 
@@ -498,7 +497,6 @@ void
 ns8250_restore(FILE *fp, int con_fd, uint32_t vmid) {
 	int ret;
 	ret = fread(&com1_dev.regs, 1, sizeof(com1_dev.regs), fp);
-	log_info("restore 8250 %d", ret);
 
 	ret = pthread_mutex_init(&com1_dev.mutex, NULL);
 	if (ret) {

@@ -220,7 +220,6 @@ config_setvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, uid_t uid)
 
 	/* Open disk images for child */
 	for (i = 0 ; i < vcp->vcp_ndisks; i++) {
-		log_info("disk: %s", vcp->vcp_disks[i]);
 		if ((diskfds[i] =
 		    open(vcp->vcp_disks[i], O_RDWR)) == -1) {
 			log_warn("%s: can't open disk %s", __func__,
@@ -580,10 +579,6 @@ config_get_receivedvm(struct privsep *ps, struct imsg *imsg)
 	errno = 0;
 	if (vm_register(ps, &vmc, &vm, imsg->hdr.peerid, 0) == -1)
 		goto fail;
-
-	/* #<{(| If the fd is -1, the kernel will be searched on the disk |)}># */
-	/* vm->vm_kernel = imsg->fd; */
-	/* vm->vm_running = 1; */
 
 	return (0);
 
