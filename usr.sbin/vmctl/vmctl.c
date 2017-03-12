@@ -189,7 +189,7 @@ send_vm(uint32_t id, const char *name)
 {
 	struct vmop_id vid;
 	int fds[2], ret;
-	char buf[4096] = {NULL};
+	char buf[4097] = {NULL};
 
 	memset(&vid, 0, sizeof(vid));
 	vid.vid_id = id;
@@ -199,8 +199,6 @@ send_vm(uint32_t id, const char *name)
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fds) == -1)
 		warnx("socketpair");
 	
-	printf("Ret: %d\n", IMSG_VMDOP_SEND_VM);
-
 	ret = imsg_compose(ibuf, IMSG_VMDOP_SEND_VM, 0, 0, fds[1],
 	    &vid, sizeof(vid));
 
@@ -208,10 +206,8 @@ send_vm(uint32_t id, const char *name)
 		if (msgbuf_write(&ibuf->w) <= 0 && errno != EAGAIN)
 			err(1, "write error");
 
-	printf("Ret: %d\n", ret);
-	printf("Reading from fd\n");
 	while(1) {
-		ret = read(fds[0], buf, 4095);
+		ret = read(fds[0], buf, 4096);
 		if(!ret) {
 			break;
 		}
@@ -225,11 +221,11 @@ send_vm(uint32_t id, const char *name)
 }
 
 void
-receive_vm(uint32_t id, const char *name)
+recv_vm(uint32_t id, const char *name)
 {
 	struct vmop_id vid;
 	int fds[2], ret;
-	char buf[256] = {NULL};
+	char buf[4096] = {NULL};
 
 	memset(&vid, 0, sizeof(vid));
 	vid.vid_id = id;
@@ -249,7 +245,8 @@ receive_vm(uint32_t id, const char *name)
 	printf("Ret: %d\n", ret);
 	printf("Writing to fd\n");
 	while(1) {
-		ret = read(0, buf, 255);
+		ret = read(0, buf, 4096);
+		/* printf("loop Ret: %d\n", ret); */
 		if(!ret) {
 			break;
 		}

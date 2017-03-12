@@ -155,10 +155,33 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 				imsg->hdr.peerid, -1, imsg->data, IMSG_DATA_SIZE(imsg));
 		break;
 	case IMSG_VMDOP_SEND_VM:
-	case IMSG_VMDOP_RECEIVE_VM:
-		IMSG_SIZE_CHECK(imsg, &vid);
 		proc_compose_imsg(ps, PROC_VMM, -1, imsg->hdr.type,
 				imsg->hdr.peerid, imsg->fd, imsg->data, IMSG_DATA_SIZE(imsg));
+		break;
+	case IMSG_VMDOP_RECEIVE_VM:
+		// SURGERY
+		IMSG_SIZE_CHECK(imsg, &vid);
+		memcpy(&vid, imsg->data, sizeof(vid));
+		log_info("Receiving %s", vid.vid_name);
+		log_info("Reading vmc");
+		ret = read(imsg->fd, &vmc, sizeof(vmc));
+		log_info("Read vmc bytes %d", ret);
+		if (ret != sizeof(vmc)) {
+			log_info("Incomplete vmc %d", ret);
+		}
+		log_info("Got vmc %s", vmc.vmc_params.vcp_name);
+		strcpy(vmc.vmc_params.vcp_name, vid.vid_name);
+		vmc.vmc_params.vcp_id = NULL;
+
+		ret = vm_register(ps, &vmc, &vm, 0, vmc.vmc_uid);
+		log_info("Register ret: %d", ret);
+		log_info("vmid: %d", vm->vm_vmid);
+		vm->vm_received = 1;
+		log_info("+++ vmc kernel %s", vmc.vmc_params.vcp_kernel);
+		config_set_receivedvm(ps, vm, imsg->hdr.peerid, vmc.vmc_uid);
+
+		proc_compose_imsg(ps, PROC_VMM, -1,
+				IMSG_VMDOP_RECEIVE_VM_END, vm->vm_vmid, imsg->fd,  NULL, 0);
 		break;
 	default:
 		return (-1);
@@ -777,6 +800,8 @@ vm_register(struct privsep *ps, struct vmop_create_params *vmc,
 
 	errno = 0;
 	*ret_vm = NULL;
+
+	log_info("name %s", vcp->vcp_name);
 
 	if ((vm = vm_getbyname(vcp->vcp_name)) != NULL) {
 		if (vm_checkperm(vm, uid) != 0 || vmc->vmc_flags != 0) {

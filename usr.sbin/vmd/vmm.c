@@ -55,6 +55,7 @@
 
 void vmm_sighdlr(int, short, void *);
 int vmm_start_vm(struct imsg *, uint32_t *);
+int vmm_receive_vm(struct vmd_vm * , int);
 int vmm_dispatch_parent(int, struct privsep_proc *, struct imsg *);
 void vmm_run(struct privsep *, struct privsep_proc *, void *);
 void vmm_dispatch_vm(int, short, void *);
@@ -105,10 +106,13 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 {
 	struct privsep		*ps = p->p_ps;
 	int			 res = 0, cmd = 0, verbose;
+	int ret;
 	struct vmd_vm		*vm;
 	struct vm_terminate_params vtp;
 	struct vmop_id vid;
 	struct vmop_result	 vmr;
+	struct vmop_create_params vmc;
+	struct vm_rwregs_params vrp;
 	uint32_t		 id = 0;
 	unsigned int		 mode;
 
@@ -210,11 +214,25 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 			imsg->fd, &vid, sizeof(vid));
 		break;
 	case IMSG_VMDOP_RECEIVE_VM:
-		IMSG_SIZE_CHECK(imsg, &vid);
-		memcpy(&vid, imsg->data, sizeof(vid));
-		id = vid.vid_id;
-		vm = vm_getbyid(id);
-		/* receive_vm(imsg->fd); */
+		IMSG_SIZE_CHECK(imsg, &vmc);
+		memcpy(&vmc, imsg->data, sizeof(vmc));
+		ret = vm_register(ps, &vmc, &vm, 0, vmc.vmc_uid);
+		vm->vm_tty = imsg->fd;
+		break;
+	case IMSG_VMDOP_RECEIVE_VM_END:
+		id = imsg->hdr.peerid;
+		vm = vm_getbyvmid(id);
+		log_info("Receiving vm_name: %d", vm);
+		log_info("vm_id: %d", id);
+
+		vmm_receive_vm(vm, imsg->fd);
+
+		/* log_info("Got vmc in vmm %s", vmc.vmc_params.vcp_name); */
+		/* log_info("Getting vrp: %d", sizeof(vrp)); */
+		/* ret = read(imsg->fd, &vrp, sizeof(vrp)); */
+		/* if (ret != sizeof(vrp)) { */
+		/* 	log_info("Incomplete vrp %d", ret); */
+		/* } */
 		break;
 	default:
 		return (-1);
@@ -555,6 +573,80 @@ vmm_start_vm(struct imsg *imsg, uint32_t *id)
 		close(fds[0]);
 
 		ret = start_vm(vm, fds[1]);
+
+		_exit(ret);
+	}
+
+	return (0);
+
+ err:
+	vm_remove(vm);
+
+	return (ret);
+}
+
+int
+vmm_receive_vm(struct vmd_vm *vm, int fd)
+{
+	struct vm_create_params	*vcp;
+	int			 ret = EINVAL;
+	int			 fds[2];
+	size_t			 i;
+
+	vcp = &vm->vm_params.vmc_params;
+
+	if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fds) == -1)
+		fatal("socketpair");
+
+	/* Start child vmd for this VM (fork, chroot, drop privs) */
+	ret = fork();
+
+	/* Start child failed? - cleanup and leave */
+	if (ret == -1) {
+		log_warnx("%s: start child failed", __func__);
+		ret = EIO;
+		goto err;
+	}
+
+	if (ret > 0) {
+		/* Parent */
+		vm->vm_pid = ret;
+		close(fds[1]);
+
+		/* XXX: No disks and NICs yet */
+		/* for (i = 0 ; i < vcp->vcp_ndisks; i++) { */
+		/* 	close(vm->vm_disks[i]); */
+		/* 	vm->vm_disks[i] = -1; */
+		/* } */
+        /*  */
+		/* for (i = 0 ; i < vcp->vcp_nnics; i++) { */
+		/* 	close(vm->vm_ifs[i].vif_fd); */
+		/* 	vm->vm_ifs[i].vif_fd = -1; */
+		/* } */
+
+		close(vm->vm_kernel);
+		vm->vm_kernel = -1;
+
+		close(vm->vm_tty);
+		vm->vm_tty = -1;
+
+		/* read back the kernel-generated vm id from the child */
+		if (read(fds[0], &vcp->vcp_id, sizeof(vcp->vcp_id)) !=
+		    sizeof(vcp->vcp_id))
+			fatal("read vcp id");
+
+		if (vcp->vcp_id == 0)
+			goto err;
+
+		if (vmm_pipe(vm, fds[0], vmm_dispatch_vm) == -1)
+			fatal("setup vm pipe");
+
+		return (0);
+	} else {
+		/* Child */
+		close(fds[0]);
+
+		ret = receive_vm(vm, fd, fds[1]);
 
 		_exit(ret);
 	}

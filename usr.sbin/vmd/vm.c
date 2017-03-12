@@ -78,8 +78,8 @@ uint8_t vcpu_exit_pci(struct vm_run_params *);
 int vcpu_pic_intr(uint32_t, uint32_t, uint8_t);
 void send_vm(int, struct vm_create_params *);
 void mwrite(int , struct vm_mem_range *);
+void mread(int , struct vm_mem_range *);
 void pause_vm(void);
-void receive_vm(int);
 void unpause_vm(struct vm_create_params *);
 
 static struct vm_mem_range *find_gpa_range(struct vm_create_params *, paddr_t,
@@ -180,12 +180,15 @@ start_vm(struct vmd_vm *vm, int fd)
 	setproctitle("%s", vcp->vcp_name);
 	log_procinit(vcp->vcp_name);
 
+	log_info(">>>>> vm_received: %d", vm->vm_received);
 	create_memory_map(vcp);
 	ret = alloc_guest_mem(vcp);
 	if (ret) {
 		errno = ret;
 		fatal("could not allocate guest memory - exiting");
 	}
+
+	/* log_info(">>>>vcp id: %d", vcp->vcp_id); */
 
 	ret = vmm_create_vm(vcp);
 	current_vm = vm;
@@ -246,6 +249,85 @@ start_vm(struct vmd_vm *vm, int fd)
 		fatal("setup vm pipe");
 
 	/* Execute the vcpu run loop(s) for this VM */
+	ret = run_vm(vm->vm_disks, nicfds, &vm->vm_params, &vrs);
+
+	return (ret);
+}
+int
+receive_vm(struct vmd_vm *vm, int recv_fd, int fd) {
+	struct vm_rwregs_params vrp;
+	struct vm_create_params	*vcp = &vm->vm_params.vmc_params;
+	struct vcpu_reg_state	 vrs;
+	int			 nicfds[VMM_MAX_NICS_PER_VM];
+	int			 ret;
+	FILE			*kernfp;
+	struct vmboot_params	 vmboot;
+	struct vm_mem_range *vmr;
+	size_t			 i;
+	/* Child */
+
+	log_info("Look ma. I am here %d", vm);
+	log_info("Getting vrp: %d", sizeof(vrp));
+	ret = read(recv_fd, &vrp, sizeof(vrp));
+	if (ret != sizeof(vrp)) {
+		log_info("Incomplete vrp %d", ret);
+	}
+	log_info("Here RAX: %d", vrp.vrwp_regs.vrs_gprs[VCPU_REGS_RAX]);
+	log_info("Here RIP: %d", vrp.vrwp_regs.vrs_gprs[VCPU_REGS_RIP]);
+	setproctitle("%s", vcp->vcp_name);
+	log_procinit(vcp->vcp_name);
+
+	ret = alloc_guest_mem(vcp);
+	ret = vmm_create_vm(vcp);
+	current_vm = vm;
+
+	/* send back the kernel-generated vm id (0 on error) */
+	log_info("writing back vcp");
+	if (write(fd, &vcp->vcp_id, sizeof(vcp->vcp_id)) !=
+	    sizeof(vcp->vcp_id))
+		fatal("write vcp id");
+
+	if (ret) {
+		errno = ret;
+		fatal("could not allocate guest memory - exiting");
+	}
+	for (i = 0; i < vcp->vcp_nmemranges; i++) {
+		vmr = &vcp->vcp_memranges[i];
+		log_info("reading from fd %d\n", vmr->vmr_size);
+		mread(recv_fd, vmr);
+	}
+
+	/* log_info(">>>>vcp id: %d", vcp->vcp_id); */
+
+
+	if (ret) {
+		errno = ret;
+		fatal("create vmm ioctl failed - exiting");
+	}
+
+	/*
+	 * pledge in the vm processes:
+	 * stdio - for malloc and basic I/O including events.
+	 * recvfd - for send/recv.
+	 * vmm - for the vmm ioctls and operations.
+	 */
+	if (pledge("stdio vmm recvfd", NULL) == -1)
+		fatal("pledge");
+	vrs = vrp.vrwp_regs;
+	/* memcpy(&vrs, &vcpu_init_flat32, sizeof(struct vcpu_reg_state)); */
+
+	con_fd = vm->vm_tty;
+	if (fcntl(con_fd, F_SETFL, O_NONBLOCK) == -1)
+		fatal("failed to set nonblocking mode on console");
+
+	event_init();
+
+	if (vmm_pipe(vm, fd, vm_dispatch_vmm) == -1)
+		fatal("setup vm pipe");
+
+	log_info("Should run now");
+	/* Execute the vcpu run loop(s) for this VM */
+	/* pause_vm(); */
 	ret = run_vm(vm->vm_disks, nicfds, &vm->vm_params, &vrs);
 
 	return (ret);
@@ -346,7 +428,15 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 	char buf[PAGE_SIZE];
 	struct vm_mem_range *vmr;
 	struct vm_rwregs_params vrp;
+	struct vmop_create_params *vmc;
+	unsigned int flags = 0;
+	vmc = calloc(1, sizeof(struct vmop_create_params));
+	flags |= VMOP_CREATE_MEMORY;
+	memcpy(&vmc->vmc_params, vcp, sizeof(struct vm_create_params));
+	vmc->vmc_flags = flags;
+
 	pause_vm();
+	sleep(1);
 
 	vrp.vrwp_vm_id = vcp->vcp_id;
 	log_info("vcp_id %d", vcp->vcp_id);
@@ -358,23 +448,14 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 		}
 	}
 
-	/* memcpy(&buf, vcp, sizeof(struct vm_create_params)); */
-	/* ret = write(fd, buf, sizeof(struct vm_create_params)); */
-	ret = write(fd, vcp, sizeof(struct vm_create_params));
+	ret = write(fd, vmc, sizeof(struct vmop_create_params));
 	log_info("write ret: %d", ret);
 
-	/* memcpy(&buf, vcp, sizeof(struct vm_rwregs_params)); */
-	ret = write(fd, vcp, sizeof(struct vm_rwregs_params));
+	ret = write(fd, &vrp, sizeof(struct vm_rwregs_params));
 	log_info("write ret: %d", ret);
 
-	log_info("vcp size: %d", sizeof(struct vm_create_params));
-	log_info("regs size: %d", sizeof(struct vm_rwregs_params));
-
-    /*  */
-	/* if (ioctl(env->vmd_fd, VMM_IOC_READREGS, &vm_regs2) < 0) { */
-	/* 	log_info ("readregs IOC error: %d", errno); */
-	/* } */
-
+	log_info("Send RAX: %d", vrp.vrwp_regs.vrs_gprs[VCPU_REGS_RAX]);
+	log_info("Send RIP: %d", vrp.vrwp_regs.vrs_gprs[VCPU_REGS_RIP]);
 
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
@@ -395,6 +476,32 @@ void mwrite(int fd, struct vm_mem_range *vmr) {
 		i = write(fd, buf, PAGE_SIZE);
 		rem = rem - PAGE_SIZE;
 		read = read + PAGE_SIZE;
+	}
+
+}
+
+void mread(int fd, struct vm_mem_range *vmr) {
+	size_t rem = vmr->vmr_size, wrote=0;
+	int i;
+	int ret;
+	char buf[PAGE_SIZE];
+	log_info("here %d", PAGE_SIZE);
+	while (rem > 0) {
+		i = read(fd, buf, PAGE_SIZE);
+		if (i==0) {
+			continue;
+		}
+		if (i!=PAGE_SIZE) {
+			log_info("problem %d", i);
+			return;
+		}
+		ret = write_mem(vmr->vmr_gpa + wrote, buf, PAGE_SIZE);
+		if (ret!=0) {
+			log_info("problem in write_mem %d %d", ret, PAGE_SIZE);
+			return;
+		}
+		rem = rem - PAGE_SIZE;
+		wrote = wrote + PAGE_SIZE;
 	}
 
 }
@@ -883,7 +990,6 @@ vcpu_run_loop(void *arg)
 
 	vrp->vrp_continue = 0;
 	n = vrp->vrp_vcpu_id;
-
 	for (;;) {
 		ret = pthread_mutex_lock(&vcpu_run_mtx[n]);
 
@@ -934,6 +1040,7 @@ vcpu_run_loop(void *arg)
 		if (ioctl(env->vmd_fd, VMM_IOC_RUN, vrp) < 0) {
 			/* If run ioctl failed, exit */
 			ret = errno;
+			log_info("vrp DEBUG %d", vrp->vrp_vcpu_id);
 			log_warn("%s: vm %d / vcpu %d run ioctl failed",
 			    __func__, vrp->vrp_vm_id, n);
 			break;
