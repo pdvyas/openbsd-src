@@ -125,7 +125,6 @@ static uint32_t push_bootargs(bios_memmap_t *, size_t);
 static size_t push_stack(uint32_t, uint32_t, uint32_t, uint32_t);
 static void push_gdt(void);
 static void push_pt(void);
-static size_t mread(FILE *, paddr_t, size_t);
 static void marc4random_buf(paddr_t, int);
 static void mbzero(paddr_t, int);
 static void mbcopy(void *, paddr_t, int);
@@ -484,7 +483,7 @@ push_stack(uint32_t bootargsz, uint32_t end, uint32_t bootdev, uint32_t howto)
  * Return values:
  *  returns 'sz' if successful, or 0 otherwise.
  */
-static size_t
+size_t
 mread(FILE *fp, paddr_t addr, size_t sz)
 {
 	size_t ct;

@@ -245,7 +245,7 @@ recv_vm(uint32_t id, const char *name)
 	printf("Ret: %d\n", ret);
 	printf("Writing to fd\n");
 	while(1) {
-		ret = read(0, buf, 4096);
+		ret = read(0, buf, 3000);
 		/* printf("loop Ret: %d\n", ret); */
 		if(!ret) {
 			break;

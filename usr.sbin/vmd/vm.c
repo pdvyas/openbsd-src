@@ -78,9 +78,9 @@ uint8_t vcpu_exit_pci(struct vm_run_params *);
 int vcpu_pic_intr(uint32_t, uint32_t, uint8_t);
 void send_vm(int, struct vm_create_params *);
 void mwrite(int , struct vm_mem_range *);
-void mread(int , struct vm_mem_range *);
 void pause_vm(void);
 void unpause_vm(struct vm_create_params *);
+void dump_regs(struct vcpu_reg_state *);
 
 static struct vm_mem_range *find_gpa_range(struct vm_create_params *, paddr_t,
     size_t);
@@ -264,6 +264,8 @@ receive_vm(struct vmd_vm *vm, int recv_fd, int fd) {
 	struct vmboot_params	 vmboot;
 	struct vm_mem_range *vmr;
 	size_t			 i;
+	char buf[PAGE_SIZE];
+	FILE *recvfp;
 	/* Child */
 
 	log_info("Look ma. I am here %d", vm);
@@ -291,13 +293,18 @@ receive_vm(struct vmd_vm *vm, int recv_fd, int fd) {
 		errno = ret;
 		fatal("could not allocate guest memory - exiting");
 	}
+
+	recvfp = fdopen(recv_fd, "r");
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
 		log_info("reading from fd %d\n", vmr->vmr_size);
-		mread(recv_fd, vmr);
+		mread(recvfp, vmr->vmr_gpa, vmr->vmr_size);
 	}
 
 	/* log_info(">>>>vcp id: %d", vcp->vcp_id); */
+	/* while(read(recv_fd, buf, PAGE_SIZE) != 0 ) { */
+	/* 	log_info("overflow!"); */
+	/* } */
 
 
 	if (ret) {
@@ -454,8 +461,10 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 	ret = write(fd, &vrp, sizeof(struct vm_rwregs_params));
 	log_info("write ret: %d", ret);
 
-	log_info("Send RAX: %d", vrp.vrwp_regs.vrs_gprs[VCPU_REGS_RAX]);
-	log_info("Send RIP: %d", vrp.vrwp_regs.vrs_gprs[VCPU_REGS_RIP]);
+	dump_regs(&vrp.vrwp_regs);
+
+	/* log_info("Send RAX: %d", vrp.vrwp_regs.vrs_gprs[VCPU_REGS_RAX]); */
+	/* log_info("Send RIP: %d", vrp.vrwp_regs.vrs_gprs[VCPU_REGS_RIP]); */
 
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
@@ -472,36 +481,23 @@ void mwrite(int fd, struct vm_mem_range *vmr) {
 	int i;
 	char buf[PAGE_SIZE];
 	while (rem > 0) {
-		read_mem(vmr->vmr_gpa + read, buf, PAGE_SIZE);
-		i = write(fd, buf, PAGE_SIZE);
-		rem = rem - PAGE_SIZE;
-		read = read + PAGE_SIZE;
-	}
-
-}
-
-void mread(int fd, struct vm_mem_range *vmr) {
-	size_t rem = vmr->vmr_size, wrote=0;
-	int i;
-	int ret;
-	char buf[PAGE_SIZE];
-	log_info("here %d", PAGE_SIZE);
-	while (rem > 0) {
-		i = read(fd, buf, PAGE_SIZE);
-		if (i==0) {
-			continue;
+		i = read_mem(vmr->vmr_gpa + read, buf, PAGE_SIZE);
+		if (i!=0) {
+			log_info("problem in read_mem");
 		}
+		i = write(fd, buf, PAGE_SIZE);
 		if (i!=PAGE_SIZE) {
 			log_info("problem %d", i);
 			return;
 		}
-		ret = write_mem(vmr->vmr_gpa + wrote, buf, PAGE_SIZE);
-		if (ret!=0) {
-			log_info("problem in write_mem %d %d", ret, PAGE_SIZE);
-			return;
-		}
 		rem = rem - PAGE_SIZE;
-		wrote = wrote + PAGE_SIZE;
+		if (rem < PAGE_SIZE *2) {
+			log_info("rem: %d", rem);
+		}
+		read = read + PAGE_SIZE;
+	}
+	if(read != vmr->vmr_size) {
+		log_info("read != vmr->vmr_size");
 	}
 
 }
@@ -775,12 +771,15 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
     struct vcpu_reg_state *vrs)
 {
 	struct vm_create_params *vcp = &vmc->vmc_params;
+	struct vm_rwregs_params vregsp;
 	uint8_t evdone = 0;
 	size_t i;
 	int ret;
 	pthread_t *tid, evtid;
 	struct vm_run_params **vrp;
 	void *exit_status;
+
+	dump_regs(vrs);
 
 	if (vcp == NULL)
 		return (EINVAL);
@@ -863,6 +862,16 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
 			log_warnx("%s: cannot reset VCPU %zu - exiting.",
 			    __progname, i);
 			return (EIO);
+		}
+		vregsp.vrwp_vm_id = vcp->vcp_id;
+		vregsp.vrwp_regs = *vrs;
+		log_info(" %d", vcp->vcp_id);
+		log_info("Here RAX: 0x%x", vregsp.vrwp_regs.vrs_gprs[VCPU_REGS_RAX]);
+		log_info("Here RIP: 0x%x", vregsp.vrwp_regs.vrs_gprs[VCPU_REGS_RIP]);
+
+		vregsp.vrwp_vcpu_id = i;
+		if (ioctl(env->vmd_fd, VMM_IOC_WRITEREGS, &vregsp) < 0) {
+			log_info ("writeregs IOC error: %d, %d", errno, ENOENT);
 		}
 
 		ret = pthread_cond_init(&vcpu_run_cond[i], NULL);
@@ -1040,7 +1049,7 @@ vcpu_run_loop(void *arg)
 		if (ioctl(env->vmd_fd, VMM_IOC_RUN, vrp) < 0) {
 			/* If run ioctl failed, exit */
 			ret = errno;
-			log_info("vrp DEBUG %d", vrp->vrp_vcpu_id);
+			log_info("vrp DEBUG %d", vrp->vrp_exit_reason);
 			log_warn("%s: vm %d / vcpu %d run ioctl failed",
 			    __func__, vrp->vrp_vm_id, n);
 			break;
@@ -1477,4 +1486,38 @@ mutex_unlock(pthread_mutex_t *m)
 		errno = ret;
 		fatal("could not release mutex");
 	}
+}
+
+void dump_regs(struct vcpu_reg_state *vrs) {
+	log_info("VCPU_REGS_RAX	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RAX]);
+	log_info("VCPU_REGS_RBX	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RBX]);
+	log_info("VCPU_REGS_RCX	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RCX]);
+	log_info("VCPU_REGS_RDX	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RDX]);
+	log_info("VCPU_REGS_RSI	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RSI]);
+	log_info("VCPU_REGS_RDI	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RDI]);
+	log_info("VCPU_REGS_R8	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R8]);
+	log_info("VCPU_REGS_R9	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R9]);
+	log_info("VCPU_REGS_R10	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R10]);
+	log_info("VCPU_REGS_R11	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R11]);
+	log_info("VCPU_REGS_R12	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R12]);
+	log_info("VCPU_REGS_R13	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R13]);
+	log_info("VCPU_REGS_R14	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R14]);
+	log_info("VCPU_REGS_R15	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R15]);
+	log_info("VCPU_REGS_RSP	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RSP]);
+	log_info("VCPU_REGS_RBP	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RBP]);
+	log_info("VCPU_REGS_RIP	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RIP]);
+	log_info("VCPU_REGS_RFLAGS   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RFLAGS]);
+	log_info("VCPU_REGS_CR0	   : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR0]);
+	log_info("VCPU_REGS_CR2	   : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR2]);
+	log_info("VCPU_REGS_CR3	   : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR3]);
+	log_info("VCPU_REGS_CR4	   : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR4]);
+	log_info("VCPU_REGS_CR8	   : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR8]);
+	log_info("VCPU_REGS_CS	   : vsi_base=0x%016llx vsi_limit=0x%016llx vsi_sel=0x%016llx ", vrs->vrs_sregs[VCPU_REGS_CS].vsi_base, vrs->vrs_sregs[VCPU_REGS_CS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_CS].vsi_sel);
+	log_info("VCPU_REGS_DS	   : vsi_base=0x%016llx vsi_limit=0x%016llx vsi_sel=0x%016llx ", vrs->vrs_sregs[VCPU_REGS_DS].vsi_base, vrs->vrs_sregs[VCPU_REGS_DS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_DS].vsi_sel);
+	log_info("VCPU_REGS_ES	   : vsi_base=0x%016llx vsi_limit=0x%016llx vsi_sel=0x%016llx ", vrs->vrs_sregs[VCPU_REGS_ES].vsi_base, vrs->vrs_sregs[VCPU_REGS_ES].vsi_limit, vrs->vrs_sregs[VCPU_REGS_ES].vsi_sel);
+	log_info("VCPU_REGS_FS	   : vsi_base=0x%016llx vsi_limit=0x%016llx vsi_sel=0x%016llx ", vrs->vrs_sregs[VCPU_REGS_FS].vsi_base, vrs->vrs_sregs[VCPU_REGS_FS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_FS].vsi_sel);
+	log_info("VCPU_REGS_GS	   : vsi_base=0x%016llx vsi_limit=0x%016llx vsi_sel=0x%016llx ", vrs->vrs_sregs[VCPU_REGS_GS].vsi_base, vrs->vrs_sregs[VCPU_REGS_GS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_GS].vsi_sel);
+	log_info("VCPU_REGS_SS	   : vsi_base=0x%016llx vsi_limit=0x%016llx vsi_sel=0x%016llx ", vrs->vrs_sregs[VCPU_REGS_SS].vsi_base, vrs->vrs_sregs[VCPU_REGS_SS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_SS].vsi_sel);
+	log_info("VCPU_REGS_LDTR   : vsi_base=0x%016llx vsi_limit=0x%016llx vsi_sel=0x%016llx ", vrs->vrs_gdtr.vsi_base, vrs->vrs_gdtr.vsi_limit, vrs->vrs_gdtr.vsi_sel);
+	log_info("VCPU_REGS_IDTR   : vsi_base=0x%016llx vsi_limit=0x%016llx vsi_sel=0x%016llx ", vrs->vrs_idtr.vsi_base, vrs->vrs_idtr.vsi_limit, vrs->vrs_idtr.vsi_sel);
 }

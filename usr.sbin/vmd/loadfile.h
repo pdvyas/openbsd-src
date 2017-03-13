@@ -75,5 +75,6 @@
 
 int loadelf_main(FILE *, struct vm_create_params *,
     struct vcpu_reg_state *, uint32_t, uint32_t);
+size_t mread(FILE *, paddr_t, size_t);
 
 #include <machine/loadfile_machdep.h>
