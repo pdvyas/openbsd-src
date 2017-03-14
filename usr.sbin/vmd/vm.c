@@ -446,6 +446,7 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 	sleep(1);
 
 	vrp.vrwp_vm_id = vcp->vcp_id;
+	vrp.vrwp_mask = -1;
 	log_info("vcp_id %d", vcp->vcp_id);
 
 	for (i = 0; i < vcp->vcp_ncpus; i++) {
@@ -870,6 +871,7 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
 		log_info("Here RIP: 0x%x", vregsp.vrwp_regs.vrs_gprs[VCPU_REGS_RIP]);
 
 		vregsp.vrwp_vcpu_id = i;
+		vregsp.vrwp_mask = -1;
 		if (ioctl(env->vmd_fd, VMM_IOC_WRITEREGS, &vregsp) < 0) {
 			log_info ("writeregs IOC error: %d, %d", errno, ENOENT);
 		}
