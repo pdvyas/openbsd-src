@@ -2096,7 +2096,7 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 		if (vcpu_vmx_check_cap(vcpu, IA32_VMX_PROCBASED2_CTLS,
 		    IA32_VMX_UNRESTRICTED_GUEST, 1)) {
 			want1 |= IA32_VMX_UNRESTRICTED_GUEST;
-			ug = 0;
+			ug = 1;
 		}
 	}
 
@@ -2155,7 +2155,7 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	 * IA32_VMX_LOAD_DEBUG_CONTROLS
 	 * IA32_VMX_LOAD_IA32_PERF_GLOBAL_CTRL_ON_ENTRY
 	 */
-	if (ug == 1)
+	if (ug == 1 && !(vrs->vrs_msrs[VCPU_REGS_EFER] & EFER_LME))
 		want1 = 0;
 	else
 		want1 = IA32_VMX_IA32E_MODE_GUEST;
@@ -2260,6 +2260,7 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 		goto exit;
 	}
 
+	// TODO: Handle this
 	if (ug)
 		cr3 = 0;
 	else
@@ -2315,17 +2316,16 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	else
 		msr_store[0].vms_data = EFER_LME;
 
-	msr_store[0].vms_data = rdmsr(MSR_EFER);
 	msr_store[1].vms_index = MSR_STAR;
-	msr_store[1].vms_data = rdmsr(MSR_STAR);		/* Initial value */
+	msr_store[1].vms_data = 0ULL;		/* Initial value */
 	msr_store[2].vms_index = MSR_LSTAR;
-	msr_store[2].vms_data = rdmsr(MSR_LSTAR);		/* Initial value */
+	msr_store[2].vms_data = 0ULL;		/* Initial value */
 	msr_store[3].vms_index = MSR_CSTAR;
-	msr_store[3].vms_data = rdmsr(MSR_CSTAR);		/* Initial value */
+	msr_store[3].vms_data = 0ULL;		/* Initial value */
 	msr_store[4].vms_index = MSR_SFMASK;
-	msr_store[4].vms_data = rdmsr(MSR_SFMASK);		/* Initial value */
+	msr_store[4].vms_data = 0ULL;		/* Initial value */
 	msr_store[5].vms_index = MSR_KERNELGSBASE;
-	msr_store[5].vms_data = rdmsr(MSR_KERNELGSBASE);		/* Initial value */
+	msr_store[5].vms_data = 0ULL;		/* Initial value */
 
 	/*
 	 * Currently we have the same count of entry/exit MSRs loads/stores

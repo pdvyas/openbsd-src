@@ -436,7 +436,7 @@ struct vm_intr_params {
 #define VM_RWREGS_GPRS	0x1	/* read/write GPRs */
 #define VM_RWREGS_SREGS	0x2	/* read/write segment registers */
 #define VM_RWREGS_CRS	0x4	/* read/write CRs */
-#define VM_RWREGS_MSRS	0x8	/* read/write CRs */
+#define VM_RWREGS_MSRS	0x8	/* read/write MSRs */
 #define VM_RWREGS_ALL	(VM_RWREGS_GPRS | VM_RWREGS_SREGS | VM_RWREGS_CRS | VM_RWREGS_MSRS)
 
 struct vm_rwregs_params {

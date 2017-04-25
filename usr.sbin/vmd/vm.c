@@ -85,6 +85,7 @@ void unpause_vm(struct vm_create_params *);
 void dump_regs(struct vcpu_reg_state *);
 
 int hardware_initialized=0;
+int received=0;
 
 static struct vm_mem_range *find_gpa_range(struct vm_create_params *, paddr_t,
     size_t);
@@ -352,6 +353,7 @@ receive_vm(struct vmd_vm *vm, int recv_fd, int fd) {
 	FILE *recvfp;
 	/* Child */
 
+	received = 1;
 	ret = read(recv_fd, &vrp, sizeof(vrp));
 	if (ret != sizeof(vrp)) {
 		log_info("Incomplete vrp %d", ret);
@@ -986,7 +988,7 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
     struct vcpu_reg_state *vrs)
 {
 	struct vm_create_params *vcp = &vmc->vmc_params;
-	/* struct vm_rwregs_params vregsp; */
+	struct vm_rwregs_params vregsp;
 	uint8_t evdone = 0;
 	size_t i;
 	int ret;
@@ -1080,12 +1082,20 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
 			    __progname, i);
 			return (EIO);
 		}
-		/* vregsp.vrwp_vm_id = vcp->vcp_id; */
-		/* vregsp.vrwp_regs = *vrs; */
+		vregsp.vrwp_vm_id = vcp->vcp_id;
+		vregsp.vrwp_regs = *vrs;
+		vregsp.vrwp_mask = -1;
 		/* log_info(" %d", vcp->vcp_id); */
 		/* log_info("Here RAX: 0x%llu", vregsp.vrwp_regs.vrs_gprs[VCPU_REGS_RAX]); */
 		/* log_info("Here RIP: 0x%llu", vregsp.vrwp_regs.vrs_gprs[VCPU_REGS_RIP]); */
 		/* dump_regs(vrs); */
+
+		// XXX: Once more becuase reset_cpu changes regs
+		if (received) {
+			if (ioctl(env->vmd_fd, VMM_IOC_WRITEREGS, &vregsp) < 0) {
+				log_info ("readregs IOC error: %d, %d", errno, ENOENT);
+			}
+		}
 
 		ret = pthread_cond_init(&vcpu_run_cond[i], NULL);
 		if (ret) {

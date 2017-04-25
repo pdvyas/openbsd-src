@@ -254,8 +254,8 @@ recv_vm(uint32_t id, const char *name)
 		if (msgbuf_write(&ibuf->w) <= 0 && errno != EAGAIN)
 			err(1, "write error");
 
-	printf("Ret: %d\n", ret);
-	printf("Writing to fd\n");
+	/* printf("Ret: %d\n", ret); */
+	/* printf("Writing to fd\n"); */
 	while(1) {
 		ret = read(0, buf, 3000);
 		/* printf("loop Ret: %d\n", ret); */
