@@ -2155,7 +2155,7 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	 * IA32_VMX_LOAD_DEBUG_CONTROLS
 	 * IA32_VMX_LOAD_IA32_PERF_GLOBAL_CTRL_ON_ENTRY
 	 */
-	if (ug == 1 && !(vrs->vrs_msrs[VCPU_REGS_EFER] & EFER_LME))
+	if (ug == 1 && !(vrs->vrs_msrs[VCPU_REGS_EFER] & EFER_LMA))
 		want1 = 0;
 	else
 		want1 = IA32_VMX_IA32E_MODE_GUEST;
