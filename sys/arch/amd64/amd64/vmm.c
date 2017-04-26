@@ -2270,8 +2270,7 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 
 	vrs->vrs_crs[VCPU_REGS_CR0] = cr0;
 	vrs->vrs_crs[VCPU_REGS_CR3] = cr3;
-	if (vrs->vrs_crs[VCPU_REGS_CR4] == 0)
-		vrs->vrs_crs[VCPU_REGS_CR4] = cr4;
+	vrs->vrs_crs[VCPU_REGS_CR4] = cr4;
 
 	/*
 	 * Select host MSRs to be loaded on exit
