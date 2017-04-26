@@ -1324,12 +1324,6 @@ vcpu_run_loop(void *arg)
 			break;
 		}
 
-		/* if (vrp->vrp_exit_reason == 7) { */
-		/* 	log_info("window exit"); */
-		/* } */
-        /*  */
-		/* log_info("exit reason: %d", vrp->vrp_exit_reason); */
-
 		if (vrp->vrp_exit_reason != VM_EXIT_NONE) {
 			/*
 			 * vmm(4) needs help handling an exit, handle in

@@ -40,10 +40,10 @@
 
 #include <dev/isa/isareg.h>
 
-#define VMM_DEBUG
+/* #define VMM_DEBUG */
 
 #ifdef VMM_DEBUG
-int vmm_debug = 1;
+int vmm_debug = 0;
 #define DPRINTF(x...)	do { if (vmm_debug) printf(x); } while(0)
 #else
 #define DPRINTF(x...)
@@ -1411,16 +1411,6 @@ vcpu_readregs_vmx(struct vcpu *vcpu, uint64_t regmask,
 		}
 	}
 
-
-	for (i = 0; i < VMX_NUM_MSR_STORE; i++) {
-		DPRINTF("  MSR %d @ %p : 0x%08llx (%s), "
-		    "value=0x%016llx ",
-		    i, &msr_store[i], msr_store[i].vms_index,
-		    msr_name_decode(msr_store[i].vms_index),
-		    msr_store[i].vms_data); 
-		vmm_decode_msr_value(msr_store[i].vms_index,
-		    msr_store[i].vms_data);
-	}
 	goto out;
 
 errout:
@@ -2260,7 +2250,6 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 		goto exit;
 	}
 
-	// TODO: Handle this
 	if (ug)
 		cr3 = 0;
 	else

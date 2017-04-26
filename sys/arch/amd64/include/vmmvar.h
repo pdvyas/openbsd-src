@@ -1,4 +1,4 @@
-/*	$OpenBSD: vmmvar.h,v 2.32 2017/03/23 08:05:58 mlarkin Exp $	*/
+/*	$OpenBSD: vmmvar.h,v 1.32 2017/03/23 08:05:58 mlarkin Exp $	*/
 /*
  * Copyright (c) 2014 Mike Larkin <mlarkin@openbsd.org>
  *
