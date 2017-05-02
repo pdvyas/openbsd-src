@@ -93,6 +93,7 @@ vmm_run(struct privsep *ps, struct privsep_proc *p, void *arg)
 	 * proc - for forking and maitaining vms.
 	 * send - for sending send/recv fds to vm proc.
 	 * recvfd - for disks, interfaces and other fds.
+	 * (TODO: Pratik - add comments for flock wpath cpath)
 	 */
 	if (pledge("stdio vmm sendfd recvfd proc flock wpath cpath", NULL) == -1)
 		fatal("pledge");
@@ -230,18 +231,8 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 	case IMSG_VMDOP_RECEIVE_VM_END:
 		id = imsg->hdr.peerid;
 		vm = vm_getbyvmid(id);
-		log_info("Receiving vm_name: %p", vm);
-		log_info("vm_id: %d", id);
-
 		res = vmm_receive_vm(vm, imsg->fd);
 		cmd = IMSG_VMDOP_START_VM_RESPONSE;
-
-		/* log_info("Got vmc in vmm %s", vmc.vmc_params.vcp_name); */
-		/* log_info("Getting vrp: %d", sizeof(vrp)); */
-		/* ret = read(imsg->fd, &vrp, sizeof(vrp)); */
-		/* if (ret != sizeof(vrp)) { */
-		/* 	log_info("Incomplete vrp %d", ret); */
-		/* } */
 		break;
 	default:
 		return (-1);
@@ -607,7 +598,7 @@ vmm_receive_vm(struct vmd_vm *vm, int fd)
 	struct vm_create_params	*vcp;
 	int			 ret = EINVAL;
 	int			 fds[2];
-	int i;
+	unsigned int i;
 
 	vcp = &vm->vm_params.vmc_params;
 

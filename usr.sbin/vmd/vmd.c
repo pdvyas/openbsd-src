@@ -164,23 +164,16 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 				imsg->hdr.peerid, imsg->fd, imsg->data, IMSG_DATA_SIZE(imsg));
 		break;
 	case IMSG_VMDOP_RECEIVE_VM:
-		// SURGERY
 		IMSG_SIZE_CHECK(imsg, &vid);
 		memcpy(&vid, imsg->data, sizeof(vid));
-		log_info("Receiving %s", vid.vid_name);
-		log_info("Reading vmc");
 		ret = read(imsg->fd, &vmc, sizeof(struct vmop_create_params));
-		log_info("Read vmc bytes %d", ret);
 		if (ret != sizeof(vmc)) {
 			log_info("Incomplete vmc %d", ret);
 		}
-		log_info("Got vmc %s", vmc.vmc_params.vcp_name);
 		strlcpy(vmc.vmc_params.vcp_name, vid.vid_name, sizeof(vmc.vmc_params.vcp_name));
 		vmc.vmc_params.vcp_id = 0;
 
 		ret = vm_register(ps, &vmc, &vm, 0, vmc.vmc_uid);
-		log_info("Register ret: %d", ret);
-		log_info("vmid: %d", vm->vm_vmid);
 		vm->vm_received = 1;
 		config_set_receivedvm(ps, vm, imsg->hdr.peerid, vmc.vmc_uid);
 
@@ -236,7 +229,6 @@ vmd_dispatch_vmm(int fd, struct privsep_proc *p, struct imsg *imsg)
 		memcpy(&vmr, imsg->data, sizeof(vmr));
 		if ((vm = vm_getbyvmid(imsg->hdr.peerid)) == NULL)
 			break;
-		log_info("svm response");
 		vm->vm_pid = vmr.vmr_pid;
 		vcp = &vm->vm_params.vmc_params;
 		vcp->vcp_id = vmr.vmr_id;
@@ -849,7 +841,6 @@ vm_register(struct privsep *ps, struct vmop_create_params *vmc,
 
 	if ((vm = vm_getbyname(vcp->vcp_name)) != NULL ||
 	    (vm = vm_getbyvmid(vcp->vcp_id)) != NULL) {
-		log_info("name %s", vcp->vcp_name);
 		if (vm_checkperm(vm, uid) != 0 || vmc->vmc_flags != 0) {
 			errno = EPERM;
 			goto fail;

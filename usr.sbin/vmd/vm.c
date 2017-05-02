@@ -262,7 +262,6 @@ start_vm(struct vmd_vm *vm, int fd)
 	setproctitle("%s", vcp->vcp_name);
 	log_procinit(vcp->vcp_name);
 
-	log_info("--->>>>> vm_received: %d", vm->vm_received);
 	create_memory_map(vcp);
 	ret = alloc_guest_mem(vcp);
 	if (ret) {
@@ -270,7 +269,6 @@ start_vm(struct vmd_vm *vm, int fd)
 		fatal("could not allocate guest memory - exiting");
 	}
 
-	/* log_info(">>>>vcp id: %d", vcp->vcp_id); */
 
 	ret = vmm_create_vm(vcp);
 	current_vm = vm;
@@ -366,7 +364,6 @@ receive_vm(struct vmd_vm *vm, int recv_fd, int fd) {
 	current_vm = vm;
 
 	/* send back the kernel-generated vm id (0 on error) */
-	log_info("writing back vcp");
 	if (write(fd, &vcp->vcp_id, sizeof(vcp->vcp_id)) !=
 	    sizeof(vcp->vcp_id))
 		fatal("write vcp id");
@@ -376,12 +373,6 @@ receive_vm(struct vmd_vm *vm, int recv_fd, int fd) {
 		fatal("could not allocate guest memory - exiting");
 	}
 
-	/* log_info(">>>>vcp id: %d", vcp->vcp_id); */
-	/* while(read(recv_fd, buf, PAGE_SIZE) != 0 ) { */
-	/* 	log_info("overflow!"); */
-	/* } */
-
-
 	if (ret) {
 		errno = ret;
 		fatal("create vmm ioctl failed - exiting");
@@ -390,15 +381,12 @@ receive_vm(struct vmd_vm *vm, int recv_fd, int fd) {
 	/*
 	 * pledge in the vm processes:
 	 * stdio - for malloc and basic I/O including events.
-	 * recvfd - for send/recv.
+	 * recvfd - for send/receive.
 	 * vmm - for the vmm ioctls and operations.
 	 */
 	if (pledge("stdio vmm recvfd", NULL) == -1)
 		fatal("pledge");
 	vrs = vrp.vrwp_regs;
-	/* vrs.vrs_gprs[VCPU_REGS_RFLAGS] = 0x46; */
-	/* memcpy(&vrs, &vcpu_init_flat32, sizeof(struct vcpu_reg_state)); */
-
 	con_fd = vm->vm_tty;
 	if (fcntl(con_fd, F_SETFL, O_NONBLOCK) == -1)
 		fatal("failed to set nonblocking mode on console");
@@ -414,7 +402,6 @@ receive_vm(struct vmd_vm *vm, int recv_fd, int fd) {
 
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
-		/* log_info("reading from fd %zu\n", vmr->vmr_size); */
 		mread(recvfp, vmr->vmr_gpa, vmr->vmr_size);
 	}
 
@@ -487,7 +474,7 @@ vm_dispatch_vmm(int fd, short event, void *arg)
 			vmr.vmr_result = 0;
 			vmr.vmr_id = vm->vm_vmid;
 			pause_vm(&vm->vm_params.vmc_params);
-			log_info("paused vm: %d", vmr.vmr_id);
+			log_info("Paused vm %d successfully.", vmr.vmr_id);
 			imsg_compose_event(&vm->vm_iev,
 				IMSG_VMDOP_PAUSE_VM_RESPONSE, imsg.hdr.peerid, imsg.hdr.pid,
 				-1, &vmr, sizeof(vmr));
@@ -496,7 +483,7 @@ vm_dispatch_vmm(int fd, short event, void *arg)
 			vmr.vmr_result = 0;
 			vmr.vmr_id = vm->vm_vmid;
 			unpause_vm(&vm->vm_params.vmc_params);
-			log_info("unpaused vm: %d", vmr.vmr_id);
+			log_info("Unpaused vm %d successfully.", vmr.vmr_id);
 			imsg_compose_event(&vm->vm_iev,
 				IMSG_VMDOP_UNPAUSE_VM_RESPONSE, imsg.hdr.peerid, imsg.hdr.pid,
 				-1, &vmr, sizeof(vmr));
@@ -553,26 +540,17 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 	struct vm_terminate_params vtp;
 	unsigned int flags = 0;
 
-
 	i8253_stop();
 	mc146818_stop();
 	sleep(1);
-
-
 	vmc = calloc(1, sizeof(struct vmop_create_params));
 	flags |= VMOP_CREATE_MEMORY;
 	memcpy(&vmc->vmc_params, &current_vm->vm_params, sizeof(struct vmop_create_params));
 	vmc->vmc_flags = flags;
-
-	log_info("paaaausing");
-
 	pause_vm(vcp);
-	sleep(3);
-	log_info("paaaaused");
-
+	sleep(3);	
 	vrp.vrwp_vm_id = vcp->vcp_id;
 	vrp.vrwp_mask = -1;
-	log_info("vcp_id %d", vcp->vcp_id);
 
 	for (i = 0; i < vcp->vcp_ncpus; i++) {
 		vrp.vrwp_vcpu_id = i;
@@ -582,34 +560,24 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 	}
 
 	ret = write(fd, vmc, sizeof(struct vmop_create_params));
-	log_info("write ret: %d", ret);
-
 	ret = write(fd, &vrp, sizeof(struct vm_rwregs_params));
-	log_info("write ret: %d", ret);
-
-       i8253_dump(fd);
-   i8259_dump(fd);
-   ns8250_dump(fd);
-   mc146818_dump(fd);
-   virtio_dump(fd);
-
-	dump_regs(&vrp.vrwp_regs);
-
-	/* log_info("Send RAX: %d", vrp.vrwp_regs.vrs_gprs[VCPU_REGS_RAX]); */
-	/* log_info("Send RIP: %d", vrp.vrwp_regs.vrs_gprs[VCPU_REGS_RIP]); */
+        i8253_dump(fd);
+        i8259_dump(fd);
+        ns8250_dump(fd);
+        mc146818_dump(fd);
+        virtio_dump(fd);
 
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
-		log_info("writing to fd %zu\n", vmr->vmr_size);
 		mwrite(fd, vmr);
 	}
-	/* unpause_vm(vcp); */
+	
 	close(fd);
 	vtp.vtp_vm_id = vcp->vcp_id;
 	if (ioctl(env->vmd_fd, VMM_IOC_TERM, &vtp) < 0) {
 		log_info ("term IOC error: %d, %d", errno, ENOENT);
 	}
-	log_info("DONE!");
+	log_info("Sent vm %d successfully.", current_vm->vm_vmid);
 }
 
 void mwrite(int fd, struct vm_mem_range *vmr) {
@@ -618,24 +586,14 @@ void mwrite(int fd, struct vm_mem_range *vmr) {
 	char buf[PAGE_SIZE];
 	while (rem > 0) {
 		i = read_mem(vmr->vmr_gpa + read, buf, PAGE_SIZE);
-		if (i!=0) {
-			log_info("problem in read_mem");
-		}
 		i = write(fd, buf, PAGE_SIZE);
 		if (i!=PAGE_SIZE) {
 			log_info("problem %d", i);
 			return;
 		}
 		rem = rem - PAGE_SIZE;
-		if (rem < PAGE_SIZE *2) {
-			log_info("rem: %zu", rem);
-		}
 		read = read + PAGE_SIZE;
 	}
-	if(read != vmr->vmr_size) {
-		log_info("read != vmr->vmr_size");
-	}
-
 }
 
 void pause_vm(struct vm_create_params *vcp) {
@@ -644,17 +602,6 @@ void pause_vm(struct vm_create_params *vcp) {
 		paused = 1;
 		return;
 	}
-	/* int fd; */
-	/* int			 nicfds[VMM_MAX_NICS_PER_VM]; */
-	/* fd = open("/tmp/test", "w"); */
-	/* paused_vcpus = 0; */
-	/* paused = 1; */
-	/* sleep(1); */
-	/* log_info("reinit"); */
-	/* init_emulated_hw(vcp, current_vm->vm_disks, nicfds); */
-	/* log_info("reinit done"); */
-	/* paused = 0; */
-	/* unpause_vm(vcp); */
 }
 
 void unpause_vm(struct vm_create_params *vcp) {
@@ -899,7 +846,6 @@ init_emulated_hw(struct vmop_create_params *vmc, int *child_disks,
 	ns8250_init(con_fd, vcp->vcp_id);
 	for (i = COM1_DATA; i <= COM1_SCR; i++) {
 		ioports_map[i] = vcpu_exit_com;
-		log_info("uarts: 0x%x", i);
 	}
 
 	/* Initialize PCI */
@@ -996,8 +942,6 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
 	struct vm_run_params **vrp;
 	void *exit_status;
 
-	dump_regs(vrs);
-
 	if (vcp == NULL)
 		return (EINVAL);
 
@@ -1085,10 +1029,6 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
 		vregsp.vrwp_vm_id = vcp->vcp_id;
 		vregsp.vrwp_regs = *vrs;
 		vregsp.vrwp_mask = -1;
-		/* log_info(" %d", vcp->vcp_id); */
-		/* log_info("Here RAX: 0x%llu", vregsp.vrwp_regs.vrs_gprs[VCPU_REGS_RAX]); */
-		/* log_info("Here RIP: 0x%llu", vregsp.vrwp_regs.vrs_gprs[VCPU_REGS_RIP]); */
-		/* dump_regs(vrs); */
 
 		// XXX: Once more becuase reset_cpu changes regs
 		if (received) {
@@ -1131,8 +1071,6 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
 		log_warn("%s: could not create event thread", __func__);
 		return (ret);
 	}
-	/* i8253_fire(0, 0, vcp->vcp_id); */
-	/* log_info("blink"); */
 
 	for (;;) {
 		ret = pthread_cond_wait(&threadcond, &threadmutex);
@@ -1229,7 +1167,6 @@ vcpu_run_loop(void *arg)
 	struct vm_rwregs_params vmrp;
 	vmrp.vrwp_vm_id = vcp->vcp_id;	
 	vmrp.vrwp_mask = -1;
-	/* vcpu_hlt[n] =1; */
 
 	for (;;) {
 
@@ -1240,13 +1177,13 @@ vcpu_run_loop(void *arg)
 			    __func__, (int)ret);
 			return ((void *)ret);
 		}
-
+		
 		/* if (ioctl(env->vmd_fd, VMM_IOC_READREGS, &vmrp) < 0) { */
-		/* 	log_info ("readregs IOC error: %d, %d", errno, ENOENT); */
-		/* } */
-		/* dump_regs(&vmrp.vrwp_regs); */
-
-		/* If we are halted or paused, wait */
+ 		/* 	log_info ("readregs IOC error: %d, %d", errno, ENOENT); */
+ 		/* } */
+ 		/* dump_regs(&vmrp.vrwp_regs); */
+ 
+ 		/* If we are halted or paused, wait */
 		if (vcpu_hlt[n]) {
 			if (paused == 1) {
 				paused_vcpus += 1;
@@ -1315,12 +1252,6 @@ vcpu_run_loop(void *arg)
 		/* If the VM is terminating, exit normally */
 		if (vrp->vrp_exit_reason == VM_EXIT_TERMINATED) {
 			ret = (intptr_t)NULL;
-			break;
-		}
-		/* If the VM is terminating, exit normally */
-		if (vrp->vrp_exit_reason == VMX_EXIT_TRIPLE_FAULT) {
-			ret = (intptr_t)NULL;
-			log_info("TRIPLE FAULT!");
 			break;
 		}
 
@@ -1416,17 +1347,9 @@ vcpu_exit_inout(struct vm_run_params *vrp)
 {
 	union vm_exit *vei = vrp->vrp_exit;
 	uint8_t intr = 0xFF;
-	int i;
-
-	/* log_debug("in out 0x%x", vei->vei.vei_port); */
 
 	if (ioports_map[vei->vei.vei_port] != NULL) {
 		intr = ioports_map[vei->vei.vei_port](vrp);
-		/* for (i = COM1_DATA; i <= COM1_SCR; i++) { */
-		/* 	if (vei->vei.vei_port == i) { */
-		/* 		log_info("uarts: 0x%x %s", i, vei->vei.vei_data); */
-		/* 	} */
-		/* } */
 	}
 	else if (vei->vei.vei_dir == VEI_DIR_IN)
 			set_return_data(vei, 0xFFFFFFFF);
@@ -1680,33 +1603,25 @@ void
 vcpu_assert_pic_irq(uint32_t vm_id, uint32_t vcpu_id, int irq)
 {
 	int ret;
-
-	/* log_info("1: about to assert irq %d %d %d", irq, vcpu_id, vm_id); */
-
 	i8259_assert_irq(irq);
 
-	/* log_info("2: asserted irq %d", irq); */
-
 	if (i8259_is_pending()) {
-		/* log_info("3: is pending"); */
-		if (ret = vcpu_pic_intr(vm_id, vcpu_id, 1))
+		ret = vcpu_pic_intr(vm_id, vcpu_id, 1);	
+		if (ret)
 			fatalx("%s: can't assert INTR: %d, %d %d", __func__, vm_id, vcpu_id, ret);
-
-		/* log_info("4: acquiring run mutex"); */
+		
 		ret = pthread_mutex_lock(&vcpu_run_mtx[vcpu_id]);
 		if (ret)
 			fatalx("%s: can't lock vcpu mtx (%d)", __func__, ret);
 
 		vcpu_hlt[vcpu_id] = 0;
-		/* log_info("5: signal run cond"); */
 		ret = pthread_cond_signal(&vcpu_run_cond[vcpu_id]);
 		if (ret)
 			fatalx("%s: can't signal (%d)", __func__, ret);
-		/* log_info("6: unlocking mutex"); */
+		
 		ret = pthread_mutex_unlock(&vcpu_run_mtx[vcpu_id]);
 		if (ret)
 			fatalx("%s: can't unlock vcpu mtx (%d)", __func__, ret);
-		/* log_info("7: unlocked mutex"); */
 	}
 }
 

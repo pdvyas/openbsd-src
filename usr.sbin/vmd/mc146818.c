@@ -100,7 +100,6 @@ rtc_updateregs(void)
 void
 rtc_fire1(int fd, short type, void *arg)
 {
-	/* log_info("fire1 rtc"); */
 	rtc.now++;
 	rtc_updateregs();
 	evtimer_add(&rtc.sec, &rtc.sec_tv);
@@ -119,11 +118,8 @@ rtc_fire1(int fd, short type, void *arg)
 void
 rtc_fireper(int fd, short type, void *arg)
 {
-	/* log_info("fire rtc per"); */
 	rtc.regs[MC_REGC] |= MC_REGC_PF;
-
 	vcpu_assert_pic_irq((ptrdiff_t)arg, 0, 8);
-
 	evtimer_add(&rtc.per, &rtc.per_tv);
 }
 
@@ -315,14 +311,13 @@ void
 mc146818_dump(int fd) {
 	int ret;
 	ret = write(fd, &rtc, sizeof(rtc));
-	log_info("dump rtc %d", ret);
+	log_debug("Sending RTC");
 }
 
 void
 mc146818_restore(FILE *fp, uint32_t vm_id) {
 	int ret;
 	ret = fread(&rtc,1, sizeof(rtc), fp);
-	log_info("restore rtc %d", ret);
 	rtc.vm_id = vm_id;
 
 	memset(&rtc.sec, 0, sizeof(struct event));
@@ -332,6 +327,7 @@ mc146818_restore(FILE *fp, uint32_t vm_id) {
 
 	evtimer_add(&rtc.per, &rtc.per_tv);
 	evtimer_add(&rtc.sec, &rtc.sec_tv);
+	log_debug("Receiving RTC");
 }
 
 void
