@@ -1802,11 +1802,17 @@ virtio_init(struct vmd_vm *vm, int *child_disks, int *child_taps)
 	evtimer_set(&vmmci.timeout, vmmci_timeout, NULL);
 }
 
-void
+int
 vmmci_restore(FILE *fp, uint32_t vm_id) {
-	int ret;
 	uint8_t id;
-	ret = fread(&vmmci, 1, sizeof(vmmci), fp);
+
+	if (fread(&vmmci, 1, sizeof(vmmci), fp) == sizeof(vmmci)) {
+		log_warnx("%s: error restoring vmmci from fp",
+		    __func__);
+		errno = EIO;
+		return (-1);
+	}
+
 	if (pci_add_device(&id, PCI_VENDOR_OPENBSD,
 	    PCI_PRODUCT_OPENBSD_CONTROL,
 	    PCI_CLASS_COMMUNICATIONS,
@@ -1815,24 +1821,29 @@ vmmci_restore(FILE *fp, uint32_t vm_id) {
 	    PCI_PRODUCT_VIRTIO_VMMCI, 1, NULL)) {
 		log_warnx("%s: can't add PCI vmm control device",
 		    __progname);
-		return;
+		return (-1);
 	}
 
 	if (pci_add_bar(id, PCI_MAPREG_TYPE_IO, vmmci_io, NULL)) {
 		log_warnx("%s: can't add bar for vmm control device",
 		    __progname);
-		return;
+		return (-1);
 	}
 	vmmci.vm_id = vm_id;
 	memset(&vmmci.timeout, 0, sizeof(struct event));
 	evtimer_set(&vmmci.timeout, vmmci_timeout, NULL);
+	return (0);
 }
 
-void
+int
 viornd_restore(FILE *fp) {
-	int ret;
 	uint8_t id;
-	ret = fread(&viornd, 1, sizeof(viornd), fp);
+	if (fread(&viornd, 1, sizeof(viornd), fp) == sizeof(viornd)) {
+		log_warnx("%s: error restoring viornd from fp",
+		    __func__);
+		errno = EIO;
+		return (-1);
+	}
 	if (pci_add_device(&id, PCI_VENDOR_QUMRANET,
 	    PCI_PRODUCT_QUMRANET_VIO_RNG, PCI_CLASS_SYSTEM,
 	    PCI_SUBCLASS_SYSTEM_MISC,
@@ -1840,17 +1851,18 @@ viornd_restore(FILE *fp) {
 	    PCI_PRODUCT_VIRTIO_ENTROPY, 1, NULL)) {
 		log_warnx("%s: can't add PCI virtio rng device",
 		    __progname);
-		return;
+		return (-1);
 	}
 
 	if (pci_add_bar(id, PCI_MAPREG_TYPE_IO, virtio_rnd_io, NULL)) {
 		log_warnx("%s: can't add bar for virtio rng device",
 		    __progname);
-		return;
+		return (-1);
 	}
+	return (0);
 }
 
-void
+int
 vionet_restore(FILE *fp, struct vm_create_params *vcp, int *child_taps) {
 	int ret;
 	uint8_t i, id;
@@ -1860,9 +1872,17 @@ vionet_restore(FILE *fp, struct vm_create_params *vcp, int *child_taps) {
 		if (vionet == NULL) {
 			log_warn("%s: calloc failure allocating vionets",
 			    __progname);
-			return;
+			return (-1);
 		}
-		ret = fread(vionet, vcp->vcp_nnics, sizeof(struct vionet_dev), fp);
+		ret = fread(vionet, vcp->vcp_nnics, 
+		    sizeof(struct vionet_dev), fp);
+		if (fread(&vionet, vcp->vcp_nnics, 
+		    sizeof(vionet), fp) ==  vcp->vcp_nnics * sizeof(vionet)) {
+			log_warnx("%s: error restoring vionet from fp",
+					__func__);
+			errno = EIO;
+			return (-1);
+		}
 
 		/* Virtio network */
 		for (i = 0; i < vcp->vcp_nnics; i++) {
@@ -1873,14 +1893,14 @@ vionet_restore(FILE *fp, struct vm_create_params *vcp, int *child_taps) {
 			    PCI_PRODUCT_VIRTIO_NETWORK, 1, NULL)) {
 				log_warnx("%s: can't add PCI virtio net device",
 				    __progname);
-				return;
+				return (-1);
 			}
 
 			if (pci_add_bar(id, PCI_MAPREG_TYPE_IO, virtio_net_io,
 			    &vionet[i])) {
 				log_warnx("%s: can't add bar for virtio net "
 				    "device", __progname);
-				return;
+				return (-1);
 			}
 
 			memset(&vionet[i].mutex, 0, sizeof(pthread_mutex_t));
@@ -1890,7 +1910,7 @@ vionet_restore(FILE *fp, struct vm_create_params *vcp, int *child_taps) {
 				errno = ret;
 				log_warn("%s: could not initialize mutex "
 				    "for vionet device", __progname);
-				return;
+				return (-1);
 			}
 			vionet[i].fd = child_taps[i];
 			vionet[i].rx_pending = 0;
@@ -1902,22 +1922,28 @@ vionet_restore(FILE *fp, struct vm_create_params *vcp, int *child_taps) {
 			if (event_add(&vionet[i].event, NULL)) {
 				log_warn("could not initialize vionet event "
 				    "handler");
-				return;
+				return (-1);
 			}
 		}
 	}
+	return (0);
 }
 
-void 
+int
 vioblk_restore(FILE *fp, struct vm_create_params *vcp, int *child_disks) {
 	uint8_t i;
-	int  ret;
 	off_t sz;
 	uint8_t id;
 
 	nr_vioblk = vcp->vcp_ndisks;
 	vioblk = calloc(vcp->vcp_ndisks, sizeof(struct vioblk_dev));
-	ret = fread(vioblk, nr_vioblk, sizeof(struct vioblk_dev), fp);
+	if (fread(&vioblk, nr_vioblk,
+	    sizeof(vioblk), fp) == nr_vioblk * sizeof(vioblk)) {
+		log_warnx("%s: error restoring vioblk from fp",
+		    __func__);
+		errno = EIO;
+		return (-1);
+	}
 	for (i = 0; i < vcp->vcp_ndisks; i++) {
 		if ((sz = lseek(child_disks[i], 0, SEEK_END)) == -1)
 			continue;
@@ -1930,51 +1956,74 @@ vioblk_restore(FILE *fp, struct vm_create_params *vcp, int *child_disks) {
 					PCI_PRODUCT_VIRTIO_BLOCK, 1, NULL)) {
 			log_warnx("%s: can't add PCI virtio block "
 					"device", __progname);
-			return;
+			return (-1);
 		}
 		if (pci_add_bar(id, PCI_MAPREG_TYPE_IO, virtio_blk_io,
 					&vioblk[i])) {
 			log_warnx("%s: can't add bar for virtio block "
 					"device", __progname);
-			return;
+			return (-1);
 		}
 		vioblk[i].fd = child_disks[i];
 	}
+	return (0);
 }
 
-void
-virtio_restore(FILE *fp, struct vm_create_params *vcp, int *child_disks, int *child_taps) {
-	viornd_restore(fp);
-	vioblk_restore(fp, vcp, child_disks);
-	vionet_restore(fp, vcp, child_taps);
-	vmmci_restore(fp, vcp->vcp_id);
+int
+virtio_restore(FILE *fp, struct vm_create_params *vcp,
+    int *child_disks, int *child_taps) {
+	int ret;
+	ret = viornd_restore(fp);
+	if (ret) {
+		return ret;
+	}
+	ret = vioblk_restore(fp, vcp, child_disks);
+	if (ret) {
+		return ret;
+	}
+	ret = vionet_restore(fp, vcp, child_taps);
+	if (ret) {
+		return ret;
+	}
+	ret = vmmci_restore(fp, vcp->vcp_id);
+	if (ret) {
+		return ret;
+	}
+	return (0);
 }
 
-void
+int
 viornd_dump(int fd) {
 	int ret;
 	ret = write(fd, &viornd, sizeof(viornd));
+	return (0);
 }
 
-void
+int
 vmmci_dump(int fd) {
 	write(fd, &vmmci, sizeof(vmmci));
+	return (0);
 }
 
-void
+int
 vionet_dump(int fd) {
 	int ret;
 	ret = write(fd, vionet, nr_vionet * sizeof(struct vionet_dev));
+	return (0);
 }
 
-void vioblk_dump(int fd) {
+int
+vioblk_dump(int fd) {
 	int ret;
 	ret = write(fd, vioblk, nr_vioblk * sizeof(struct vioblk_dev));
+	return (0);
 }
 
-void virtio_dump(int fd) {
+int
+virtio_dump(int fd) {
 	viornd_dump(fd);
 	vioblk_dump(fd);
 	vionet_dump(fd);
 	vmmci_dump(fd);
+	return (0);
 }

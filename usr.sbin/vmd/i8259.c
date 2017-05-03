@@ -25,6 +25,7 @@
 
 #include <unistd.h>
 #include <stdio.h>
+#include <errno.h>
 #include "proc.h"
 #include "i8259.h"
 #include "vmm.h"
@@ -650,18 +651,25 @@ vcpu_exit_i8259(struct vm_run_params *vrp)
 	return (0xFF);
 }
 
-void
+int
 i8259_dump(int fd) {
 	int ret;
 	ret = write(fd, &pics, sizeof(pics));
-	log_debug("Sending PIC");
+	log_debug("%s: sending PIC", __func__);
+	return (0);
 }
 
 
-void
+int
 i8259_restore(FILE *fp) {
-	int ret;
-	ret = fread(&pics, 1,  sizeof(pics), fp);
-	log_debug("Receiving PIC");
+	log_debug("%s: restoring PIC", __func__);
+	if (fread(&pics, 1,
+	    sizeof(pics), fp) == sizeof(pics)) {
+		log_warnx("%s: error restoring PIC from fp",
+		    __func__);
+		errno = EIO;
+		return (-1);
+	}
+	return (0);
 }
 

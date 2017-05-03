@@ -27,6 +27,7 @@
 #include <stddef.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <errno.h>
 
 #include "i8253.h"
 #include "i8259.h"
@@ -345,19 +346,25 @@ i8253_fire(int fd, short type, void *arg)
 		evtimer_add(&ctr->timer, &tv);
 }
 
-void
+int
 i8253_dump(int fd) {
 	int ret;
+	log_debug("%s: dumping PIT", __func__);
 	ret = write(fd, &i8253_channel, sizeof(i8253_channel));
-	log_debug("Sending PIT");
+	return (0);
 }
 
 
-void
+int
 i8253_restore(FILE *fp, uint32_t vm_id) {
-	int ret;
-	
-	ret = fread(&i8253_channel, 1, sizeof(i8253_channel), fp);
+	log_debug("%s: restoring PIT", __func__);
+	if (fread(&i8253_channel, 1,
+	    sizeof(i8253_channel), fp) == sizeof(i8253_channel)) {
+		log_warnx("%s: error restoring PIT from fp",
+		    __func__);
+		errno = EIO;
+		return (-1);
+	}
 	memset(&i8253_channel[0].timer, 0, sizeof(struct event));
 	memset(&i8253_channel[1].timer, 0, sizeof(struct event));
 	memset(&i8253_channel[2].timer, 0, sizeof(struct event));
@@ -369,7 +376,7 @@ i8253_restore(FILE *fp, uint32_t vm_id) {
 	evtimer_set(&i8253_channel[1].timer, i8253_fire, &i8253_channel[1]);
 	evtimer_set(&i8253_channel[2].timer, i8253_fire, &i8253_channel[2]);
 	i8253_reset(0);
-	log_debug("Receiving PIT");
+	return (0);
 }
 
 void

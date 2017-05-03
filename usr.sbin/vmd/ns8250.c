@@ -486,18 +486,26 @@ vcpu_exit_com(struct vm_run_params *vrp)
 	return (intr);
 }
 
-void
+int
 ns8250_dump(int fd) {
 	int ret;
 	ret = write(fd, &com1_dev.regs, sizeof(com1_dev.regs));
-	log_debug("Sending UART");
+	log_debug("%s: sending UART", __func__);
+	return (0);
 }
 
 
-void
+int
 ns8250_restore(FILE *fp, int con_fd, uint32_t vmid) {
 	int ret;
-	ret = fread(&com1_dev.regs, 1, sizeof(com1_dev.regs), fp);
+	log_debug("%s: receiving UART", __func__);
+	if (fread(&com1_dev.regs, 1,
+	    sizeof(com1_dev.regs), fp) == sizeof(com1_dev.regs)) {
+		log_warnx("%s: error restoring PIT from fp",
+		    __func__);
+		errno = EIO;
+		return (-1);
+	}
 
 	ret = pthread_mutex_init(&com1_dev.mutex, NULL);
 	if (ret) {
@@ -511,5 +519,5 @@ ns8250_restore(FILE *fp, int con_fd, uint32_t vmid) {
 	event_set(&com1_dev.event, com1_dev.fd, EV_READ | EV_PERSIST,
 	    com_rcv_event, (void *)(intptr_t)vmid);
 	event_add(&com1_dev.event, NULL);
-	log_debug("Receiving UART");
+	return (0);
 }
