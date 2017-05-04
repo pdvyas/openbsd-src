@@ -19,5 +19,5 @@ void mc146818_init(uint32_t, uint64_t, uint64_t);
 uint8_t vcpu_exit_mc146818(struct vm_run_params *vrp);
 void dump_mc146818(void);
 int mc146818_dump(int);
-int mc146818_restore(FILE *, uint32_t);
-void  mc146818_stop(void);
+int mc146818_restore(int, uint32_t);
+void mc146818_stop(void);

@@ -43,6 +43,7 @@
 #include "vmm.h"
 #include "virtio.h"
 #include "loadfile.h"
+#include "atomicio.h"
 
 extern char *__progname;
 
@@ -1803,13 +1804,14 @@ virtio_init(struct vmd_vm *vm, int *child_disks, int *child_taps)
 }
 
 int
-vmmci_restore(FILE *fp, uint32_t vm_id) {
+vmmci_restore(int fd, uint32_t vm_id)
+{
 	uint8_t id;
 
-	if (fread(&vmmci, 1, sizeof(vmmci), fp) == sizeof(vmmci)) {
-		log_warnx("%s: error restoring vmmci from fp",
+	log_debug("%s: receiving vmmci", __func__);
+	if (atomicio(read, fd, &vmmci, sizeof(vmmci)) != sizeof(vmmci)) {
+		log_warnx("%s: error reading vmmci from fd",
 		    __func__);
-		errno = EIO;
 		return (-1);
 	}
 
@@ -1836,12 +1838,13 @@ vmmci_restore(FILE *fp, uint32_t vm_id) {
 }
 
 int
-viornd_restore(FILE *fp) {
+viornd_restore(int fd)
+{
 	uint8_t id;
-	if (fread(&viornd, 1, sizeof(viornd), fp) == sizeof(viornd)) {
-		log_warnx("%s: error restoring viornd from fp",
+	log_debug("%s: receiving viornd", __func__);
+	if (atomicio(read, fd, &viornd, sizeof(viornd)) != sizeof(viornd)) {
+		log_warnx("%s: error reading viornd from fd",
 		    __func__);
-		errno = EIO;
 		return (-1);
 	}
 	if (pci_add_device(&id, PCI_VENDOR_QUMRANET,
@@ -1863,7 +1866,8 @@ viornd_restore(FILE *fp) {
 }
 
 int
-vionet_restore(FILE *fp, struct vm_create_params *vcp, int *child_taps) {
+vionet_restore(int fd, struct vm_create_params *vcp, int *child_taps)
+{
 	int ret;
 	uint8_t i, id;
 	nr_vionet = vcp->vcp_nnics;
@@ -1874,13 +1878,12 @@ vionet_restore(FILE *fp, struct vm_create_params *vcp, int *child_taps) {
 			    __progname);
 			return (-1);
 		}
-		ret = fread(vionet, vcp->vcp_nnics, 
-		    sizeof(struct vionet_dev), fp);
-		if (fread(&vionet, vcp->vcp_nnics, 
-		    sizeof(vionet), fp) ==  vcp->vcp_nnics * sizeof(vionet)) {
-			log_warnx("%s: error restoring vionet from fp",
+		log_debug("%s: receiving vionet", __func__);
+		if (atomicio(read, fd, vionet,
+		    vcp->vcp_nnics * sizeof(struct vionet_dev)) !=
+		    vcp->vcp_nnics * sizeof(struct vionet_dev)) {
+			log_warnx("%s: error reading vionet from fd",
 					__func__);
-			errno = EIO;
 			return (-1);
 		}
 
@@ -1930,18 +1933,20 @@ vionet_restore(FILE *fp, struct vm_create_params *vcp, int *child_taps) {
 }
 
 int
-vioblk_restore(FILE *fp, struct vm_create_params *vcp, int *child_disks) {
+vioblk_restore(int fd, struct vm_create_params *vcp, int *child_disks)
+{
 	uint8_t i;
 	off_t sz;
 	uint8_t id;
 
 	nr_vioblk = vcp->vcp_ndisks;
 	vioblk = calloc(vcp->vcp_ndisks, sizeof(struct vioblk_dev));
-	if (fread(&vioblk, nr_vioblk,
-	    sizeof(vioblk), fp) == nr_vioblk * sizeof(vioblk)) {
-		log_warnx("%s: error restoring vioblk from fp",
-		    __func__);
-		errno = EIO;
+	log_debug("%s: receiving vioblk", __func__);
+	if (atomicio(read, fd, vioblk,
+	    nr_vioblk * sizeof(struct vioblk_dev)) !=
+	    nr_vioblk * sizeof(struct vioblk_dev)) {
+		log_warnx("%s: error reading vioblk from fd",
+				__func__);
 		return (-1);
 	}
 	for (i = 0; i < vcp->vcp_ndisks; i++) {
@@ -1970,22 +1975,23 @@ vioblk_restore(FILE *fp, struct vm_create_params *vcp, int *child_disks) {
 }
 
 int
-virtio_restore(FILE *fp, struct vm_create_params *vcp,
-    int *child_disks, int *child_taps) {
+virtio_restore(int fd, struct vm_create_params *vcp,
+    int *child_disks, int *child_taps)
+{
 	int ret;
-	ret = viornd_restore(fp);
+	ret = viornd_restore(fd);
 	if (ret) {
 		return ret;
 	}
-	ret = vioblk_restore(fp, vcp, child_disks);
+	ret = vioblk_restore(fd, vcp, child_disks);
 	if (ret) {
 		return ret;
 	}
-	ret = vionet_restore(fp, vcp, child_taps);
+	ret = vionet_restore(fd, vcp, child_taps);
 	if (ret) {
 		return ret;
 	}
-	ret = vmmci_restore(fp, vcp->vcp_id);
+	ret = vmmci_restore(fd, vcp->vcp_id);
 	if (ret) {
 		return ret;
 	}
@@ -1994,36 +2000,70 @@ virtio_restore(FILE *fp, struct vm_create_params *vcp,
 
 int
 viornd_dump(int fd) {
-	int ret;
-	ret = write(fd, &viornd, sizeof(viornd));
+	log_debug("%s: sending viornd", __func__);
+	if (atomicio(vwrite, fd, &viornd, sizeof(viornd)) != sizeof(viornd)) {
+		log_warnx("%s: error writing viornd to fd",
+		    __func__);
+		return (-1);
+	}
 	return (0);
 }
 
 int
 vmmci_dump(int fd) {
-	write(fd, &vmmci, sizeof(vmmci));
+	log_debug("%s: sending vmmci", __func__);
+	if (atomicio(vwrite, fd, &vmmci, sizeof(vmmci)) != sizeof(vmmci)) {
+		log_warnx("%s: error writing vmmci to fd",
+		    __func__);
+		return (-1);
+	}
 	return (0);
 }
 
 int
 vionet_dump(int fd) {
-	int ret;
-	ret = write(fd, vionet, nr_vionet * sizeof(struct vionet_dev));
+	log_debug("%s: sending vionet", __func__);
+	if (atomicio(vwrite, fd, vionet, 
+	    nr_vionet * sizeof(struct vionet_dev)) != 
+	    nr_vionet * sizeof(struct vionet_dev)) {
+		log_warnx("%s: error writing vionet to fd",
+		    __func__);
+		return (-1);
+	}
 	return (0);
 }
 
 int
 vioblk_dump(int fd) {
-	int ret;
-	ret = write(fd, vioblk, nr_vioblk * sizeof(struct vioblk_dev));
+	log_debug("%s: sending vioblk", __func__);
+	if (atomicio(vwrite, fd, vioblk, 
+	    nr_vioblk * sizeof(struct vioblk_dev)) != 
+	    nr_vioblk * sizeof(struct vioblk_dev)) {
+		log_warnx("%s: error writing vioblk to fd",
+		    __func__);
+		return (-1);
+	}
 	return (0);
 }
 
 int
 virtio_dump(int fd) {
-	viornd_dump(fd);
-	vioblk_dump(fd);
-	vionet_dump(fd);
-	vmmci_dump(fd);
+	int ret;
+	ret = viornd_dump(fd);
+	if (ret) {
+		return ret;
+	}
+	ret = vioblk_dump(fd);
+	if (ret) {
+		return ret;
+	}
+	ret = vionet_dump(fd);
+	if (ret) {
+		return ret;
+	}
+	ret = vmmci_dump(fd);
+	if (ret) {
+		return ret;
+	}
 	return (0);
 }

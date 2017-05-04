@@ -28,13 +28,13 @@
 #include <time.h>
 #include <unistd.h>
 #include <stdio.h>
-#include <errno.h>
 
 #include "vmd.h"
 #include "mc146818.h"
 #include "proc.h"
 #include "virtio.h"
 #include "vmm.h"
+#include "atomicio.h"
 
 #define MC_DIVIDER_MASK 0xe0
 #define MC_RATE_MASK 0xf
@@ -316,20 +316,24 @@ vcpu_exit_mc146818(struct vm_run_params *vrp)
 }
 
 int
-mc146818_dump(int fd) {
-	int ret;
-	ret = write(fd, &rtc, sizeof(rtc));
+mc146818_dump(int fd)
+{
 	log_debug("%s: sending RTC", __func__);
+	if (atomicio(vwrite, fd, &rtc, sizeof(rtc)) != sizeof(rtc)) {
+		log_warnx("%s: error writing RTC to fd",
+		    __func__);
+		return (-1);
+	}
 	return (0);
 }
 
 int
-mc146818_restore(FILE *fp, uint32_t vm_id) {
+mc146818_restore(int fd, uint32_t vm_id)
+{
 	log_debug("%s: restoring RTC", __func__);
-	if (fread(&rtc, 1, sizeof(rtc), fp) == sizeof(rtc)) {
-		log_warnx("%s: error restoring RTC from fp",
+	if (atomicio(read, fd, &rtc, sizeof(rtc)) != sizeof(rtc)) {
+		log_warnx("%s: error reading RTC from fd",
 		    __func__);
-		errno = EIO;
 		return (-1);
 	}
 	rtc.vm_id = vm_id;
@@ -345,7 +349,8 @@ mc146818_restore(FILE *fp, uint32_t vm_id) {
 }
 
 void
-mc146818_stop() {
+mc146818_stop()
+{
 	evtimer_del(&rtc.per);
 	evtimer_del(&rtc.sec);
 }

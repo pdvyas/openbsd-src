@@ -29,6 +29,7 @@
 #include "proc.h"
 #include "i8259.h"
 #include "vmm.h"
+#include "atomicio.h"
 
 struct i8259 {
 	uint8_t irr;
@@ -652,22 +653,25 @@ vcpu_exit_i8259(struct vm_run_params *vrp)
 }
 
 int
-i8259_dump(int fd) {
-	int ret;
-	ret = write(fd, &pics, sizeof(pics));
+i8259_dump(int fd)
+{
 	log_debug("%s: sending PIC", __func__);
+	if (atomicio(vwrite, fd, &pics, sizeof(pics)) != sizeof(pics)) {
+		log_warnx("%s: error writing PIC to fd",
+		    __func__);
+		return (-1);
+	}
 	return (0);
 }
 
 
 int
-i8259_restore(FILE *fp) {
+i8259_restore(int fd)
+{
 	log_debug("%s: restoring PIC", __func__);
-	if (fread(&pics, 1,
-	    sizeof(pics), fp) == sizeof(pics)) {
-		log_warnx("%s: error restoring PIC from fp",
+	if (atomicio(read, fd, &pics, sizeof(pics)) != sizeof(pics)) {
+		log_warnx("%s: error reading PIC from fd",
 		    __func__);
-		errno = EIO;
 		return (-1);
 	}
 	return (0);

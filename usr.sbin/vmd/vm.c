@@ -73,7 +73,7 @@ void create_memory_map(struct vm_create_params *);
 int alloc_guest_mem(struct vm_create_params *);
 int vmm_create_vm(struct vm_create_params *);
 void init_emulated_hw(struct vmop_create_params *, int *, int *);
-void restore_emulated_hw(struct vm_create_params *, FILE *fp, int *, int *);
+void restore_emulated_hw(struct vm_create_params *,int , int *, int *);
 void vcpu_exit_inout(struct vm_run_params *);
 uint8_t vcpu_exit_pci(struct vm_run_params *);
 int vcpu_pic_intr(uint32_t, uint32_t, uint8_t);
@@ -403,12 +403,13 @@ receive_vm(struct vmd_vm *vm, int recv_fd, int fd) {
 
 	event_init();
 
-	recvfp = fdopen(recv_fd, "r");
-
 	for (i = 0; i < VMM_MAX_NICS_PER_VM; i++)
 		nicfds[i] = vm->vm_ifs[i].vif_fd;
 
-	restore_emulated_hw(vcp, recvfp, nicfds, vm->vm_disks);
+	restore_emulated_hw(vcp, recv_fd, nicfds, vm->vm_disks);
+	log_debug("emulated hw restored");
+
+	recvfp = fdopen(recv_fd, "r");
 
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
@@ -879,33 +880,33 @@ init_emulated_hw(struct vmop_create_params *vmc, int *child_disks,
  * Restores the userspace hardware emulation from fd
  */
 void
-restore_emulated_hw(struct vm_create_params *vcp, FILE *fp, int *child_taps, int *child_disks)
+restore_emulated_hw(struct vm_create_params *vcp, int fd, int *child_taps, int *child_disks)
 {
 	/* struct vm_create_params *vcp = &vmc->vmc_params; */
 	int i;
 	memset(&ioports_map, 0, sizeof(io_fn_t) * MAX_PORTS);
 
 	/* Init i8253 PIT */
-	i8253_restore(fp, vcp->vcp_id);
+	i8253_restore(fd, vcp->vcp_id);
 	ioports_map[TIMER_CTRL] = vcpu_exit_i8253;
 	ioports_map[TIMER_BASE + TIMER_CNTR0] = vcpu_exit_i8253;
 	ioports_map[TIMER_BASE + TIMER_CNTR1] = vcpu_exit_i8253;
 	ioports_map[TIMER_BASE + TIMER_CNTR2] = vcpu_exit_i8253;
 
 	/* Init master and slave PICs */
-	i8259_restore(fp);
+	i8259_restore(fd);
 	ioports_map[IO_ICU1] = vcpu_exit_i8259;
 	ioports_map[IO_ICU1 + 1] = vcpu_exit_i8259;
 	ioports_map[IO_ICU2] = vcpu_exit_i8259;
 	ioports_map[IO_ICU2 + 1] = vcpu_exit_i8259;
 
 	/* Init ns8250 UART */
-	ns8250_restore(fp, con_fd, vcp->vcp_id);
+	ns8250_restore(fd, con_fd, vcp->vcp_id);
 	for (i = COM1_DATA; i <= COM1_SCR; i++)
 		ioports_map[i] = vcpu_exit_com;
 
 	/* Init mc146818 RTC */
-	mc146818_restore(fp, vcp->vcp_id);
+	mc146818_restore(fd, vcp->vcp_id);
 	ioports_map[IO_RTC] = vcpu_exit_mc146818;
 	ioports_map[IO_RTC + 1] = vcpu_exit_mc146818;
 
@@ -919,7 +920,7 @@ restore_emulated_hw(struct vm_create_params *vcp, FILE *fp, int *child_taps, int
 	ioports_map[PCI_MODE1_DATA_REG + 2] = vcpu_exit_pci;
 	ioports_map[PCI_MODE1_DATA_REG + 3] = vcpu_exit_pci;
 	pci_init();
-	virtio_restore(fp, vcp, child_disks, child_taps);
+	virtio_restore(fd, vcp, child_disks, child_taps);
 	hardware_initialized = 1;
 }
 

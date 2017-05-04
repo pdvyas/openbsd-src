@@ -32,6 +32,7 @@
 #include "proc.h"
 #include "vmd.h"
 #include "vmm.h"
+#include "atomicio.h"
 
 extern char *__progname;
 struct ns8250_dev com1_dev;
@@ -488,22 +489,25 @@ vcpu_exit_com(struct vm_run_params *vrp)
 
 int
 ns8250_dump(int fd) {
-	int ret;
-	ret = write(fd, &com1_dev.regs, sizeof(com1_dev.regs));
 	log_debug("%s: sending UART", __func__);
+	if (atomicio(vwrite, fd, &com1_dev.regs, 
+	    sizeof(com1_dev.regs)) != sizeof(com1_dev.regs)) {
+		log_warnx("%s: error writing UART to fd",
+		    __func__);
+		return (-1);
+	}
 	return (0);
 }
 
 
 int
-ns8250_restore(FILE *fp, int con_fd, uint32_t vmid) {
+ns8250_restore(int fd, int con_fd, uint32_t vmid) {
 	int ret;
 	log_debug("%s: receiving UART", __func__);
-	if (fread(&com1_dev.regs, 1,
-	    sizeof(com1_dev.regs), fp) == sizeof(com1_dev.regs)) {
-		log_warnx("%s: error restoring PIT from fp",
+	if (atomicio(read, fd, &com1_dev.regs,
+	    sizeof(com1_dev.regs)) != sizeof(com1_dev.regs)) {
+		log_warnx("%s: error reading UART from fd",
 		    __func__);
-		errno = EIO;
 		return (-1);
 	}
 
