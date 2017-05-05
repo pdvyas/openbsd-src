@@ -666,6 +666,7 @@ virtio_blk_io(int dir, uint16_t reg, uint32_t *data, uint8_t *intr,
 
 	*intr = 0xFF;
 
+
 	if (dir == 0) {
 		switch (reg) {
 		case VIRTIO_CONFIG_DEVICE_FEATURES:
