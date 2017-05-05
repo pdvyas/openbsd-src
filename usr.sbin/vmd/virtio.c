@@ -1981,15 +1981,19 @@ virtio_restore(int fd, struct vm_create_params *vcp,
 	ret = viornd_restore(fd);
 	if (ret)
 		return ret;
+
 	ret = vioblk_restore(fd, vcp, child_disks);
 	if (ret)
 		return ret;
+
 	ret = vionet_restore(fd, vcp, child_taps);
 	if (ret)
 		return ret;
+
 	ret = vmmci_restore(fd, vcp->vcp_id);
 	if (ret)
 		return ret;
+
 	return (0);
 }
 
@@ -2049,14 +2053,18 @@ virtio_dump(int fd)
 	ret = viornd_dump(fd);
 	if (ret)
 		return ret;
+
 	ret = vioblk_dump(fd);
 	if (ret)
 		return ret;
+
 	ret = vionet_dump(fd);
 	if (ret)
 		return ret;
+
 	ret = vmmci_dump(fd);
 	if (ret)
 		return ret;
+
 	return (0);
 }
