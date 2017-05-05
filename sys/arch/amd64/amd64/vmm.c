@@ -174,7 +174,6 @@ void svm_setmsrbrw(struct vcpu *, uint32_t);
 void vmx_setmsrbr(struct vcpu *, uint32_t);
 void vmx_setmsrbw(struct vcpu *, uint32_t);
 void vmx_setmsrbrw(struct vcpu *, uint32_t);
-void vmm_fpusave(void);
 
 #ifdef VMM_DEBUG
 void dump_vcpu(struct vcpu *);
