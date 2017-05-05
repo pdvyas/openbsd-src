@@ -1809,8 +1809,7 @@ vmmci_restore(int fd, uint32_t vm_id)
 
 	log_debug("%s: receiving vmmci", __func__);
 	if (atomicio(read, fd, &vmmci, sizeof(vmmci)) != sizeof(vmmci)) {
-		log_warnx("%s: error reading vmmci from fd",
-		    __func__);
+		log_warnx("%s: error reading vmmci from fd", __func__);
 		return (-1);
 	}
 
@@ -1840,10 +1839,10 @@ int
 viornd_restore(int fd)
 {
 	uint8_t id;
+
 	log_debug("%s: receiving viornd", __func__);
 	if (atomicio(read, fd, &viornd, sizeof(viornd)) != sizeof(viornd)) {
-		log_warnx("%s: error reading viornd from fd",
-		    __func__);
+		log_warnx("%s: error reading viornd from fd", __func__);
 		return (-1);
 	}
 	if (pci_add_device(&id, PCI_VENDOR_QUMRANET,
@@ -1869,6 +1868,7 @@ vionet_restore(int fd, struct vm_create_params *vcp, int *child_taps)
 {
 	int ret;
 	uint8_t i, id;
+
 	nr_vionet = vcp->vcp_nnics;
 	if (vcp->vcp_nnics > 0) {
 		vionet = calloc(vcp->vcp_nnics, sizeof(struct vionet_dev));
@@ -1944,8 +1944,7 @@ vioblk_restore(int fd, struct vm_create_params *vcp, int *child_disks)
 	if (atomicio(read, fd, vioblk,
 	    nr_vioblk * sizeof(struct vioblk_dev)) !=
 	    nr_vioblk * sizeof(struct vioblk_dev)) {
-		log_warnx("%s: error reading vioblk from fd",
-				__func__);
+		log_warnx("%s: error reading vioblk from fd", __func__);
 		return (-1);
 	}
 	for (i = 0; i < vcp->vcp_ndisks; i++) {
@@ -1978,6 +1977,7 @@ virtio_restore(int fd, struct vm_create_params *vcp,
     int *child_disks, int *child_taps)
 {
 	int ret;
+
 	ret = viornd_restore(fd);
 	if (ret)
 		return ret;
@@ -1998,8 +1998,7 @@ viornd_dump(int fd)
 {
 	log_debug("%s: sending viornd", __func__);
 	if (atomicio(vwrite, fd, &viornd, sizeof(viornd)) != sizeof(viornd)) {
-		log_warnx("%s: error writing viornd to fd",
-		    __func__);
+		log_warnx("%s: error writing viornd to fd", __func__);
 		return (-1);
 	}
 	return (0);
@@ -2010,8 +2009,7 @@ vmmci_dump(int fd)
 {
 	log_debug("%s: sending vmmci", __func__);
 	if (atomicio(vwrite, fd, &vmmci, sizeof(vmmci)) != sizeof(vmmci)) {
-		log_warnx("%s: error writing vmmci to fd",
-		    __func__);
+		log_warnx("%s: error writing vmmci to fd", __func__);
 		return (-1);
 	}
 	return (0);
@@ -2024,8 +2022,7 @@ vionet_dump(int fd)
 	if (atomicio(vwrite, fd, vionet,
 	    nr_vionet * sizeof(struct vionet_dev)) !=
 	    nr_vionet * sizeof(struct vionet_dev)) {
-		log_warnx("%s: error writing vionet to fd",
-		    __func__);
+		log_warnx("%s: error writing vionet to fd", __func__);
 		return (-1);
 	}
 	return (0);
@@ -2038,8 +2035,7 @@ vioblk_dump(int fd)
 	if (atomicio(vwrite, fd, vioblk,
 	    nr_vioblk * sizeof(struct vioblk_dev)) !=
 	    nr_vioblk * sizeof(struct vioblk_dev)) {
-		log_warnx("%s: error writing vioblk to fd",
-		    __func__);
+		log_warnx("%s: error writing vioblk to fd", __func__);
 		return (-1);
 	}
 	return (0);
@@ -2049,6 +2045,7 @@ int
 virtio_dump(int fd)
 {
 	int ret;
+
 	ret = viornd_dump(fd);
 	if (ret)
 		return ret;

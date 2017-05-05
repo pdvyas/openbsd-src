@@ -319,8 +319,7 @@ mc146818_dump(int fd)
 {
 	log_debug("%s: sending RTC", __func__);
 	if (atomicio(vwrite, fd, &rtc, sizeof(rtc)) != sizeof(rtc)) {
-		log_warnx("%s: error writing RTC to fd",
-		    __func__);
+		log_warnx("%s: error writing RTC to fd", __func__);
 		return (-1);
 	}
 	return (0);
@@ -331,8 +330,7 @@ mc146818_restore(int fd, uint32_t vm_id)
 {
 	log_debug("%s: restoring RTC", __func__);
 	if (atomicio(read, fd, &rtc, sizeof(rtc)) != sizeof(rtc)) {
-		log_warnx("%s: error reading RTC from fd",
-		    __func__);
+		log_warnx("%s: error reading RTC from fd", __func__);
 		return (-1);
 	}
 	rtc.vm_id = vm_id;

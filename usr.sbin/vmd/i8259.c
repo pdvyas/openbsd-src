@@ -655,8 +655,7 @@ i8259_dump(int fd)
 {
 	log_debug("%s: sending PIC", __func__);
 	if (atomicio(vwrite, fd, &pics, sizeof(pics)) != sizeof(pics)) {
-		log_warnx("%s: error writing PIC to fd",
-		    __func__);
+		log_warnx("%s: error writing PIC to fd", __func__);
 		return (-1);
 	}
 	return (0);
@@ -667,10 +666,8 @@ i8259_restore(int fd)
 {
 	log_debug("%s: restoring PIC", __func__);
 	if (atomicio(read, fd, &pics, sizeof(pics)) != sizeof(pics)) {
-		log_warnx("%s: error reading PIC from fd",
-		    __func__);
+		log_warnx("%s: error reading PIC from fd", __func__);
 		return (-1);
 	}
 	return (0);
 }
-

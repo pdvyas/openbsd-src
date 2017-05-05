@@ -33,7 +33,6 @@
 #include "atomicio.h"
 
 extern char *__progname;
-int vcpu_pic_intr(uint32_t, uint32_t, uint8_t);
 
 /*
  * Channel 0 is used to generate the legacy hardclock interrupt (HZ).
@@ -350,8 +349,7 @@ i8253_dump(int fd)
 	log_debug("%s: sending PIT", __func__);
 	if (atomicio(vwrite, fd, &i8253_channel, sizeof(i8253_channel)) !=
 	    sizeof(i8253_channel)) {
-		log_warnx("%s: error writing PIT to fd",
-		    __func__);
+		log_warnx("%s: error writing PIT to fd", __func__);
 		return (-1);
 	}
 	return (0);
@@ -364,8 +362,7 @@ i8253_restore(int fd, uint32_t vm_id)
 	log_debug("%s: restoring PIT", __func__);
 	if (atomicio(read, fd, &i8253_channel, sizeof(i8253_channel)) !=
 	    sizeof(i8253_channel)) {
-		log_warnx("%s: error reading PIT from fd",
-		    __func__);
+		log_warnx("%s: error reading PIT from fd", __func__);
 		return (-1);
 	}
 	memset(&i8253_channel[0].timer, 0, sizeof(struct event));
