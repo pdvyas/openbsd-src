@@ -487,7 +487,8 @@ vcpu_exit_com(struct vm_run_params *vrp)
 }
 
 int
-ns8250_dump(int fd) {
+ns8250_dump(int fd)
+{
 	log_debug("%s: sending UART", __func__);
 	if (atomicio(vwrite, fd, &com1_dev.regs,
 	    sizeof(com1_dev.regs)) != sizeof(com1_dev.regs)) {
@@ -500,7 +501,8 @@ ns8250_dump(int fd) {
 
 
 int
-ns8250_restore(int fd, int con_fd, uint32_t vmid) {
+ns8250_restore(int fd, int con_fd, uint32_t vmid)
+{
 	int ret;
 	log_debug("%s: receiving UART", __func__);
 	if (atomicio(read, fd, &com1_dev.regs,

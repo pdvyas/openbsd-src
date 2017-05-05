@@ -1979,26 +1979,23 @@ virtio_restore(int fd, struct vm_create_params *vcp,
 {
 	int ret;
 	ret = viornd_restore(fd);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
 	ret = vioblk_restore(fd, vcp, child_disks);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
 	ret = vionet_restore(fd, vcp, child_taps);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
 	ret = vmmci_restore(fd, vcp->vcp_id);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
 	return (0);
 }
 
 int
-viornd_dump(int fd) {
+viornd_dump(int fd)
+{
 	log_debug("%s: sending viornd", __func__);
 	if (atomicio(vwrite, fd, &viornd, sizeof(viornd)) != sizeof(viornd)) {
 		log_warnx("%s: error writing viornd to fd",
@@ -2009,7 +2006,8 @@ viornd_dump(int fd) {
 }
 
 int
-vmmci_dump(int fd) {
+vmmci_dump(int fd)
+{
 	log_debug("%s: sending vmmci", __func__);
 	if (atomicio(vwrite, fd, &vmmci, sizeof(vmmci)) != sizeof(vmmci)) {
 		log_warnx("%s: error writing vmmci to fd",
@@ -2020,7 +2018,8 @@ vmmci_dump(int fd) {
 }
 
 int
-vionet_dump(int fd) {
+vionet_dump(int fd)
+{
 	log_debug("%s: sending vionet", __func__);
 	if (atomicio(vwrite, fd, vionet,
 	    nr_vionet * sizeof(struct vionet_dev)) !=
@@ -2033,7 +2032,8 @@ vionet_dump(int fd) {
 }
 
 int
-vioblk_dump(int fd) {
+vioblk_dump(int fd)
+{
 	log_debug("%s: sending vioblk", __func__);
 	if (atomicio(vwrite, fd, vioblk,
 	    nr_vioblk * sizeof(struct vioblk_dev)) !=
@@ -2046,23 +2046,20 @@ vioblk_dump(int fd) {
 }
 
 int
-virtio_dump(int fd) {
+virtio_dump(int fd)
+{
 	int ret;
 	ret = viornd_dump(fd);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
 	ret = vioblk_dump(fd);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
 	ret = vionet_dump(fd);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
 	ret = vmmci_dump(fd);
-	if (ret) {
+	if (ret)
 		return ret;
-	}
 	return (0);
 }
