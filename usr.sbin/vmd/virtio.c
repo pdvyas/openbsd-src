@@ -1940,6 +1940,10 @@ vioblk_restore(int fd, struct vm_create_params *vcp, int *child_disks)
 
 	nr_vioblk = vcp->vcp_ndisks;
 	vioblk = calloc(vcp->vcp_ndisks, sizeof(struct vioblk_dev));
+	if (vioblk == NULL) {
+		log_warn("%s: calloc failure allocating vioblks", __progname);
+		return (-1);
+	}
 	log_debug("%s: receiving vioblk", __func__);
 	if (atomicio(read, fd, vioblk,
 	    nr_vioblk * sizeof(struct vioblk_dev)) !=
