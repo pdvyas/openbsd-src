@@ -356,7 +356,6 @@ i8253_dump(int fd)
 	return (0);
 }
 
-
 int
 i8253_restore(int fd, uint32_t vm_id)
 {
