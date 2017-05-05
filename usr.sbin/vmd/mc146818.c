@@ -27,7 +27,6 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <stdio.h>
 
 #include "vmd.h"
 #include "mc146818.h"

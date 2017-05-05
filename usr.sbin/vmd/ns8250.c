@@ -22,7 +22,6 @@
 #include <machine/vmmvar.h>
 
 #include <errno.h>
-#include <stdio.h>
 #include <event.h>
 #include <pthread.h>
 #include <string.h>
@@ -490,7 +489,7 @@ vcpu_exit_com(struct vm_run_params *vrp)
 int
 ns8250_dump(int fd) {
 	log_debug("%s: sending UART", __func__);
-	if (atomicio(vwrite, fd, &com1_dev.regs, 
+	if (atomicio(vwrite, fd, &com1_dev.regs,
 	    sizeof(com1_dev.regs)) != sizeof(com1_dev.regs)) {
 		log_warnx("%s: error writing UART to fd",
 		    __func__);

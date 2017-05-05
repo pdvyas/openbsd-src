@@ -35,7 +35,6 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 #include <unistd.h>
 
 #include "pci.h"
@@ -2023,8 +2022,8 @@ vmmci_dump(int fd) {
 int
 vionet_dump(int fd) {
 	log_debug("%s: sending vionet", __func__);
-	if (atomicio(vwrite, fd, vionet, 
-	    nr_vionet * sizeof(struct vionet_dev)) != 
+	if (atomicio(vwrite, fd, vionet,
+	    nr_vionet * sizeof(struct vionet_dev)) !=
 	    nr_vionet * sizeof(struct vionet_dev)) {
 		log_warnx("%s: error writing vionet to fd",
 		    __func__);
@@ -2036,8 +2035,8 @@ vionet_dump(int fd) {
 int
 vioblk_dump(int fd) {
 	log_debug("%s: sending vioblk", __func__);
-	if (atomicio(vwrite, fd, vioblk, 
-	    nr_vioblk * sizeof(struct vioblk_dev)) != 
+	if (atomicio(vwrite, fd, vioblk,
+	    nr_vioblk * sizeof(struct vioblk_dev)) !=
 	    nr_vioblk * sizeof(struct vioblk_dev)) {
 		log_warnx("%s: error writing vioblk to fd",
 		    __func__);

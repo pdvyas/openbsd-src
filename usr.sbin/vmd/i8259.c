@@ -24,8 +24,6 @@
 #include <machine/vmmvar.h>
 
 #include <unistd.h>
-#include <stdio.h>
-#include <errno.h>
 #include "proc.h"
 #include "i8259.h"
 #include "vmm.h"
@@ -663,7 +661,6 @@ i8259_dump(int fd)
 	}
 	return (0);
 }
-
 
 int
 i8259_restore(int fd)

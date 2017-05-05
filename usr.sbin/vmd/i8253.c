@@ -26,10 +26,8 @@
 #include <string.h>
 #include <stddef.h>
 #include <unistd.h>
-#include <stdio.h>
 
 #include "i8253.h"
-#include "i8259.h"
 #include "proc.h"
 #include "vmm.h"
 #include "atomicio.h"
