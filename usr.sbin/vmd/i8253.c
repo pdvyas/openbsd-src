@@ -337,6 +337,7 @@ i8253_fire(int fd, short type, void *arg)
 
 	timerclear(&tv);
 	tv.tv_usec = (ctr->start * NS_PER_TICK) / 1000;
+
 	vcpu_assert_pic_irq(ctr->vm_id, 0, 0);
 
 	if (ctr->mode != TIMER_INTTC)
