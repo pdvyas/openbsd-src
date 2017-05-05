@@ -1339,8 +1339,6 @@ vcpu_readregs_vmx(struct vcpu *vcpu, uint64_t regmask,
 	struct vcpu_segment_info *sregs = vrs->vrs_sregs;
 	struct vmx_msr_store *msr_store;
 
-	vmm_fpusave();
-
 	if (vcpu_reload_vmcs_vmx(&vcpu->vc_control_pa))
 		return (EINVAL);
 
@@ -1399,6 +1397,7 @@ vcpu_readregs_vmx(struct vcpu *vcpu, uint64_t regmask,
 	}
 	if (regmask & VM_RWREGS_CRS) {
 		crs[VCPU_REGS_CR2] = vcpu->vc_gueststate.vg_cr2;
+		crs[VCPU_REGS_XCR0] = vcpu->vc_gueststate.vg_xcr0;
 		if (vmread(VMCS_GUEST_IA32_CR0, &crs[VCPU_REGS_CR0]))
 			goto errout;
 		if (vmread(VMCS_GUEST_IA32_CR3, &crs[VCPU_REGS_CR3]))
@@ -1525,6 +1524,7 @@ vcpu_writeregs_vmx(struct vcpu *vcpu, uint64_t regmask, int loadvmcs,
 			goto errout;
 	}
 	if (regmask & VM_RWREGS_CRS) {
+		vcpu->vc_gueststate.vg_xcr0 = crs[VCPU_REGS_XCR0];
 		if (vmwrite(VMCS_GUEST_IA32_CR0, crs[VCPU_REGS_CR0]))
 			goto errout;
 		if (vmwrite(VMCS_GUEST_IA32_CR3, crs[VCPU_REGS_CR3]))

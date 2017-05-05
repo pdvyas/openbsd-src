@@ -328,7 +328,8 @@ struct vcpu_segment_info {
 #define VCPU_REGS_CR3	2
 #define VCPU_REGS_CR4	3
 #define VCPU_REGS_CR8	4
-#define VCPU_REGS_NCRS	(VCPU_REGS_CR8 + 1)
+#define VCPU_REGS_XCR0	5
+#define VCPU_REGS_NCRS	(VCPU_REGS_XCR0 + 1)
 
 #define VCPU_REGS_CS		0
 #define VCPU_REGS_DS		1
