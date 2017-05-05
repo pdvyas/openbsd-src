@@ -498,7 +498,6 @@ ns8250_dump(int fd)
 	return (0);
 }
 
-
 int
 ns8250_restore(int fd, int con_fd, uint32_t vmid)
 {
