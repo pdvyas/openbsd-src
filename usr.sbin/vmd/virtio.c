@@ -1934,9 +1934,8 @@ vionet_restore(int fd, struct vm_create_params *vcp, int *child_taps)
 int
 vioblk_restore(int fd, struct vm_create_params *vcp, int *child_disks)
 {
-	uint8_t i;
+	uint8_t i, id;
 	off_t sz;
-	uint8_t id;
 
 	nr_vioblk = vcp->vcp_ndisks;
 	vioblk = calloc(vcp->vcp_ndisks, sizeof(struct vioblk_dev));
