@@ -922,7 +922,7 @@ restore_emulated_hw(struct vm_create_params *vcp, int fd, int *child_taps, int *
 	ioports_map[PCI_MODE1_DATA_REG + 2] = vcpu_exit_pci;
 	ioports_map[PCI_MODE1_DATA_REG + 3] = vcpu_exit_pci;
 	pci_init();
-	virtio_restore(fd, vcp, child_disks, child_taps);
+	virtio_restore(fd, current_vm, child_disks, child_taps);
 	hardware_initialized = 1;
 }
 

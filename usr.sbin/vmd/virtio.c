@@ -1865,10 +1865,12 @@ viornd_restore(int fd)
 }
 
 int
-vionet_restore(int fd, struct vm_create_params *vcp, int *child_taps)
+vionet_restore(int fd, struct vmd_vm *vm, int *child_taps)
 {
-	int ret;
+	struct vmop_create_params *vmc = &vm->vm_params;
+	struct vm_create_params *vcp = &vmc->vmc_params;
 	uint8_t i, id;
+	int ret;
 
 	nr_vionet = vcp->vcp_nnics;
 	if (vcp->vcp_nnics > 0) {
@@ -1883,7 +1885,7 @@ vionet_restore(int fd, struct vm_create_params *vcp, int *child_taps)
 		    vcp->vcp_nnics * sizeof(struct vionet_dev)) !=
 		    vcp->vcp_nnics * sizeof(struct vionet_dev)) {
 			log_warnx("%s: error reading vionet from fd",
-					__func__);
+			    __func__);
 			return (-1);
 		}
 
@@ -1918,6 +1920,7 @@ vionet_restore(int fd, struct vm_create_params *vcp, int *child_taps)
 			vionet[i].fd = child_taps[i];
 			vionet[i].rx_pending = 0;
 			vionet[i].vm_id = vcp->vcp_id;
+			vionet[i].vm_vmid = vm->vm_vmid;
 
 			memset(&vionet[i].event, 0, sizeof(struct event));
 			event_set(&vionet[i].event, vionet[i].fd,
@@ -1956,19 +1959,19 @@ vioblk_restore(int fd, struct vm_create_params *vcp, int *child_disks)
 			continue;
 
 		if (pci_add_device(&id, PCI_VENDOR_QUMRANET,
-					PCI_PRODUCT_QUMRANET_VIO_BLOCK,
-					PCI_CLASS_MASS_STORAGE,
-					PCI_SUBCLASS_MASS_STORAGE_SCSI,
-					PCI_VENDOR_OPENBSD,
-					PCI_PRODUCT_VIRTIO_BLOCK, 1, NULL)) {
+		    PCI_PRODUCT_QUMRANET_VIO_BLOCK,
+		    PCI_CLASS_MASS_STORAGE,
+		    PCI_SUBCLASS_MASS_STORAGE_SCSI,
+		    PCI_VENDOR_OPENBSD,
+		    PCI_PRODUCT_VIRTIO_BLOCK, 1, NULL)) {
 			log_warnx("%s: can't add PCI virtio block "
-					"device", __progname);
+			    "device", __progname);
 			return (-1);
 		}
 		if (pci_add_bar(id, PCI_MAPREG_TYPE_IO, virtio_blk_io,
-					&vioblk[i])) {
+		    &vioblk[i])) {
 			log_warnx("%s: can't add bar for virtio block "
-					"device", __progname);
+			    "device", __progname);
 			return (-1);
 		}
 		vioblk[i].fd = child_disks[i];
@@ -1977,25 +1980,22 @@ vioblk_restore(int fd, struct vm_create_params *vcp, int *child_disks)
 }
 
 int
-virtio_restore(int fd, struct vm_create_params *vcp,
-    int *child_disks, int *child_taps)
+virtio_restore(int fd, struct vmd_vm *vm, int *child_disks, int *child_taps)
 {
+	struct vmop_create_params *vmc = &vm->vm_params;
+	struct vm_create_params *vcp = &vmc->vmc_params;
 	int ret;
 
-	ret = viornd_restore(fd);
-	if (ret)
+	if ((ret = viornd_restore(fd)) == -1)
 		return ret;
 
-	ret = vioblk_restore(fd, vcp, child_disks);
-	if (ret)
+	if ((ret = vioblk_restore(fd, vcp, child_disks)) == -1)
 		return ret;
 
-	ret = vionet_restore(fd, vcp, child_taps);
-	if (ret)
+	if ((ret = vionet_restore(fd, vm, child_taps)) == -1)
 		return ret;
 
-	ret = vmmci_restore(fd, vcp->vcp_id);
-	if (ret)
+	if ((ret = vmmci_restore(fd, vcp->vcp_id)) == -1)
 		return ret;
 
 	return (0);
@@ -2054,20 +2054,16 @@ virtio_dump(int fd)
 {
 	int ret;
 
-	ret = viornd_dump(fd);
-	if (ret)
+	if ((ret = viornd_dump(fd)) == -1)
 		return ret;
 
-	ret = vioblk_dump(fd);
-	if (ret)
+	if ((ret = vioblk_dump(fd)) == -1)
 		return ret;
 
-	ret = vionet_dump(fd);
-	if (ret)
+	if ((ret = vionet_dump(fd)) == -1)
 		return ret;
 
-	ret = vmmci_dump(fd);
-	if (ret)
+	if ((ret = vmmci_dump(fd)) == -1);
 		return ret;
 
 	return (0);

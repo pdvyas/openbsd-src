@@ -162,7 +162,7 @@ struct vmmci_dev {
 /* virtio.c */
 void virtio_init(struct vmd_vm *, int *, int *);
 int virtio_dump(int);
-int virtio_restore(int, struct vm_create_params *, int *, int *);
+int virtio_restore(int, struct vmd_vm *, int *, int *);
 uint32_t vring_size(uint32_t);
 
 int virtio_rnd_io(int, uint16_t, uint32_t *, uint8_t *, void *, uint8_t);
@@ -181,7 +181,7 @@ int vioblk_notifyq(struct vioblk_dev *);
 
 int virtio_net_io(int, uint16_t, uint32_t *, uint8_t *, void *, uint8_t);
 int vionet_dump(int);
-int vionet_restore(int, struct vm_create_params *, int *);
+int vionet_restore(int, struct vmd_vm *, int *);
 void vionet_update_qs(struct vionet_dev *);
 void vionet_update_qa(struct vionet_dev *);
 int vionet_notifyq(struct vionet_dev *);
