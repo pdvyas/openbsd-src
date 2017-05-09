@@ -369,6 +369,22 @@ control_dispatch_imsg(int fd, short event, void *arg)
 			log_setverbose(v);
 
 			/* FALLTHROUGH */
+		case IMSG_VMDOP_RECEIVE_VM:
+			if (proc_compose_imsg(ps, PROC_PARENT, -1,
+			    imsg.hdr.type, imsg.hdr.peerid, imsg.fd,
+			    imsg.data, IMSG_DATA_SIZE(&imsg)) == -1) {
+				control_close(fd, cs);
+				return;
+			}
+		case IMSG_VMDOP_SEND_VM_REQUEST:
+		case IMSG_VMDOP_PAUSE_VM:
+		case IMSG_VMDOP_UNPAUSE_VM:
+			if (proc_compose_imsg(ps, PROC_PARENT, -1,
+			    imsg.hdr.type, fd, imsg.fd,
+			    imsg.data, IMSG_DATA_SIZE(&imsg)) == -1) {
+				control_close(fd, cs);
+				return;
+			}
 		case IMSG_VMDOP_LOAD:
 		case IMSG_VMDOP_RELOAD:
 		case IMSG_CTL_RESET:
