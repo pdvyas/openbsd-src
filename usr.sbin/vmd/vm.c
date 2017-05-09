@@ -489,8 +489,8 @@ vm_dispatch_vmm(int fd, short event, void *arg)
 			pause_vm(&vm->vm_params.vmc_params);
 			log_info("Paused vm %d successfully.", vmr.vmr_id);
 			imsg_compose_event(&vm->vm_iev,
-				IMSG_VMDOP_PAUSE_VM_RESPONSE, imsg.hdr.peerid, imsg.hdr.pid,
-				-1, &vmr, sizeof(vmr));
+			    IMSG_VMDOP_PAUSE_VM_RESPONSE, imsg.hdr.peerid, imsg.hdr.pid,
+			    -1, &vmr, sizeof(vmr));
 			break;
 		case IMSG_VMDOP_UNPAUSE_VM:
 			vmr.vmr_result = 0;
@@ -498,8 +498,8 @@ vm_dispatch_vmm(int fd, short event, void *arg)
 			unpause_vm(&vm->vm_params.vmc_params);
 			log_info("Unpaused vm %d successfully.", vmr.vmr_id);
 			imsg_compose_event(&vm->vm_iev,
-				IMSG_VMDOP_UNPAUSE_VM_RESPONSE, imsg.hdr.peerid, imsg.hdr.pid,
-				-1, &vmr, sizeof(vmr));
+			    IMSG_VMDOP_UNPAUSE_VM_RESPONSE, imsg.hdr.peerid, imsg.hdr.pid,
+			    -1, &vmr, sizeof(vmr));
 			break;
 		case IMSG_VMDOP_SEND_VM_REQUEST:
 			vmr.vmr_result = 0;
@@ -574,11 +574,11 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 
 	ret = write(fd, vmc, sizeof(struct vmop_create_params));
 	ret = write(fd, &vrp, sizeof(struct vm_rwregs_params));
-        i8253_dump(fd);
-        i8259_dump(fd);
-        ns8250_dump(fd);
-        mc146818_dump(fd);
-        virtio_dump(fd);
+	i8253_dump(fd);
+	i8259_dump(fd);
+	ns8250_dump(fd);
+	mc146818_dump(fd);
+	virtio_dump(fd);
 
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
@@ -1150,7 +1150,7 @@ event_thread(void *arg)
 	mutex_unlock(&threadmutex);
 
 	return (void *)ret;
- }
+}
 
 /*
  * vcpu_run_loop
@@ -1192,20 +1192,20 @@ vcpu_run_loop(void *arg)
 		}
 		
 		/* if (ioctl(env->vmd_fd, VMM_IOC_READREGS, &vmrp) < 0) { */
- 		/* 	log_info ("readregs IOC error: %d, %d", errno, ENOENT); */
- 		/* } */
- 		/* dump_regs(&vmrp.vrwp_regs); */
+		/* 	log_info ("readregs IOC error: %d, %d", errno, ENOENT); */
+		/* } */
+		/* dump_regs(&vmrp.vrwp_regs); */
  
- 		/* If we are halted or paused, wait */
+		/* If we are halted or paused, wait */
 		if (vcpu_hlt[n]) {
 			if (paused == 1) {
 				paused_vcpus += 1;
 				while (paused) {
 					ret = pthread_cond_wait(&vcpu_run_cond[n],
-							&vcpu_run_mtx[n]);
+					    &vcpu_run_mtx[n]);
 					if (ret) {
 						log_warnx("%s: can't wait on cond (%d)",
-								__func__, (int)ret);
+						    __func__, (int)ret);
 						(void)pthread_mutex_unlock(&vcpu_run_mtx[n]);
 						break;
 					}
@@ -1216,11 +1216,11 @@ vcpu_run_loop(void *arg)
 			}
 			if (vcpu_hlt[n]) {
 				ret = pthread_cond_wait(&vcpu_run_cond[n],
-						&vcpu_run_mtx[n]);
+				    &vcpu_run_mtx[n]);
 
 				if (ret) {
 					log_warnx("%s: can't wait on cond (%d)",
-							__func__, (int)ret);
+					    __func__, (int)ret);
 					(void)pthread_mutex_unlock(&vcpu_run_mtx[n]);
 					break;
 				}
@@ -1365,7 +1365,7 @@ vcpu_exit_inout(struct vm_run_params *vrp)
 		intr = ioports_map[vei->vei.vei_port](vrp);
 	}
 	else if (vei->vei.vei_dir == VEI_DIR_IN)
-			set_return_data(vei, 0xFFFFFFFF);
+		set_return_data(vei, 0xFFFFFFFF);
 
 	if (intr != 0xFF)
 		vcpu_assert_pic_irq(vrp->vrp_vm_id, vrp->vrp_vcpu_id, intr);
