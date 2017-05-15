@@ -494,7 +494,7 @@ config_set_receivedvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, ui
 	/*     vmc, sizeof(*vmc)); */
 
 	proc_compose_imsg(ps, PROC_VMM, -1,
-	    IMSG_VMDOP_RECEIVE_VM, vm->vm_vmid, fd,  vmc, sizeof(struct vmop_create_params));
+	    IMSG_VMDOP_RECEIVE_VM_REQUEST, vm->vm_vmid, fd,  vmc, sizeof(struct vmop_create_params));
 
 	for (i = 0; i < vcp->vcp_ndisks; i++) {
 		proc_compose_imsg(ps, PROC_VMM, -1,
