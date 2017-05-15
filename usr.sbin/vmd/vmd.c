@@ -40,6 +40,7 @@
 #include <grp.h>
 
 #include "proc.h"
+#include "atomicio.h"
 #include "vmd.h"
 
 __dead void usage(void);
@@ -169,6 +170,21 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 	case IMSG_VMDOP_SEND_VM_REQUEST:
 		IMSG_SIZE_CHECK(imsg, &vid);
 		memcpy(&vid, imsg->data, sizeof(vid));
+		id = vid.vid_id;
+		if (vid.vid_id == 0) {
+			if ((vm = vm_getbyname(vid.vid_name)) == NULL) {
+				res = ENOENT;
+				cmd = IMSG_VMDOP_SEND_VM_RESPONSE;
+				break;
+			} else {
+				vid.vid_id = vm->vm_vmid;
+			}
+		} else if ((vm = vm_getbyvmid(vid.vid_id)) == NULL) {
+				res = ENOENT;
+				cmd = IMSG_VMDOP_SEND_VM_RESPONSE;
+				break;
+			} else {
+		}
 		vmr.vmr_id = vid.vid_id;
 		if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fds) == -1) {
 			res = errno;
@@ -178,25 +194,38 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 			proc_compose_imsg(ps, PROC_CONTROL, -1, IMSG_VMDOP_SEND_VM_RESPONSE,
 			    imsg->hdr.peerid, fds[0], &vmr, sizeof(vmr));
 			proc_compose_imsg(ps, PROC_VMM, -1, imsg->hdr.type,
-			    imsg->hdr.peerid, fds[1], imsg->data, IMSG_DATA_SIZE(imsg));
+			    imsg->hdr.peerid, fds[1], &vid, sizeof(vid));
 		}
 		break;
-	case IMSG_VMDOP_RECEIVE_VM:
+	case IMSG_VMDOP_RECEIVE_VM_REQUEST:
 		IMSG_SIZE_CHECK(imsg, &vid);
 		memcpy(&vid, imsg->data, sizeof(vid));
-		ret = read(imsg->fd, &vmc, sizeof(struct vmop_create_params));
-		if (ret != sizeof(vmc)) {
-			log_info("%s: incomplete vmc", __func__);
+		if (imsg->fd == -1) {
+			log_warnx("%s: invalid fd", __func__);
+			return (-1);
+		}
+		log_debug("%s: sending fd to vmctl", __func__);
+		log_info("reading vmc");
+		if (atomicio(read, imsg->fd, &vmc, sizeof(vmc)) !=
+				sizeof(vmc)) {
+			log_warnx("%s: error reading vmc from recevied vm", __func__);
+			return (-1);
 		}
 		strlcpy(vmc.vmc_params.vcp_name, vid.vid_name, sizeof(vmc.vmc_params.vcp_name));
 		vmc.vmc_params.vcp_id = 0;
 
 		ret = vm_register(ps, &vmc, &vm, 0, vmc.vmc_uid);
-		vm->vm_received = 1;
-		config_set_receivedvm(ps, vm, imsg->hdr.peerid, vmc.vmc_uid);
-
-		proc_compose_imsg(ps, PROC_VMM, -1,
-				IMSG_VMDOP_RECEIVE_VM_END, vm->vm_vmid, imsg->fd,  NULL, 0);
+		log_info("%s: %d", __func__, ret);
+		if (ret != 0) {
+			res = errno;
+			cmd = IMSG_VMDOP_START_VM_RESPONSE;
+			close(imsg->fd);
+		} else {
+			vm->vm_received = 1;
+			config_set_receivedvm(ps, vm, imsg->hdr.peerid, vmc.vmc_uid);
+			proc_compose_imsg(ps, PROC_VMM, -1,
+					IMSG_VMDOP_RECEIVE_VM_END, vm->vm_vmid, imsg->fd,  NULL, 0);
+		}
 		break;
 	default:
 		return (-1);
@@ -298,16 +327,20 @@ vmd_dispatch_vmm(int fd, struct privsep_proc *p, struct imsg *imsg)
 			vm->vm_shutdown = 1;
 		}
 		break;
+	case IMSG_VMDOP_SEND_VM_RESPONSE:
 	case IMSG_VMDOP_TERMINATE_VM_EVENT:
 		IMSG_SIZE_CHECK(imsg, &vmr);
 		memcpy(&vmr, imsg->data, sizeof(vmr));
+		log_info("here: removing %d", vmr.vmr_id);
 		if ((vm = vm_getbyvmid(vmr.vmr_id)) == NULL)
 			break;
+		log_info("here");
 		if (vmr.vmr_result == 0) {
 			if (vm->vm_from_config)
 				vm_stop(vm, 0);
 			else
 				vm_remove(vm);
+			
 		} else if (vmr.vmr_result == EAGAIN) {
 			/* Stop VM instance but keep the tty open */
 			vm_stop(vm, 1);

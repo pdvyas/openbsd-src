@@ -40,6 +40,7 @@
 
 #include "vmd.h"
 #include "vmctl.h"
+#include "atomicio.h"
 
 extern char *__progname;
 uint32_t info_id;
@@ -172,6 +173,7 @@ vm_start_complete(struct imsg *imsg, int *ret, int autoconnect)
 {
 	struct vmop_result *vmr;
 	int res;
+	printf("here\n");
 
 	if (imsg->hdr.type == IMSG_VMDOP_START_VM_RESPONSE) {
 		vmr = (struct vmop_result *)imsg->data;
@@ -215,23 +217,23 @@ int
 send_vm_complete(struct imsg *imsg, int *ret)
 {
 	struct vmop_result *vmr;
-	char buf[4097] = {0};
-	int n;
-	int fd;
+	char buf[PAGE_SIZE];
+	int readn, writen, fd;
 
 	if (imsg->hdr.type == IMSG_VMDOP_SEND_VM_RESPONSE) {
 		vmr = (struct vmop_result *)imsg->data;
 		fd = imsg->fd;
-		if (fd < 0) {
+		if (fd < 0 || vmr->vmr_result) {
 			warn("send vm command failed %d", fd);
 			*ret = EIO;
 		} else {
 			while(1) {
-				n = read(fd, buf, 4096);
-				if (!n) {
+				readn = atomicio(read, fd, buf, sizeof(buf));
+				if(!readn)
 					break;
-				}
-				write(1, buf, n);
+				writen = atomicio(vwrite, STDOUT_FILENO, buf, readn);
+				if(writen != readn)
+					break;
 			}
 			warnx("sent vm %d successfully", vmr->vmr_id);
 			*ret = 0;
@@ -245,33 +247,28 @@ send_vm_complete(struct imsg *imsg, int *ret)
 }
 
 void
-recv_vm(uint32_t id, const char *name)
+vm_receive(uint32_t id, const char *name)
 {
 	struct vmop_id vid;
-	int fds[2], ret;
-	char buf[4096] = {0};
+	int fds[2], readn, writen;
+	char buf[PAGE_SIZE];
 
 	memset(&vid, 0, sizeof(vid));
-	vid.vid_id = id;
-	if (name != NULL)
-		(void)strlcpy(vid.vid_name, name, sizeof(vid.vid_name));
-
-	if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fds) == -1)
-		warnx("socketpair");
-
-	ret = imsg_compose(ibuf, IMSG_VMDOP_RECEIVE_VM, 0, 0, fds[1],
-	    &vid, sizeof(vid));
-
-	while (ibuf->w.queued)
-		if (msgbuf_write(&ibuf->w) <= 0 && errno != EAGAIN)
-			err(1, "write error");
-
-	while(1) {
-		ret = read(0, buf, 3000);
-		if(!ret) {
-			break;
+	strlcpy(vid.vid_name, name, sizeof(vid.vid_name));
+	if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fds) == -1) {
+		warnx("%s: socketpair creation failed", __func__);
+	} else {
+		imsg_compose(ibuf, IMSG_VMDOP_RECEIVE_VM_REQUEST, 0, 0, fds[0],
+				&vid, sizeof(vid));
+		imsg_flush(ibuf);
+		while(1) {
+			readn = atomicio(read, STDIN_FILENO, buf, sizeof(buf));
+			if(!readn)
+				break;
+			writen = atomicio(vwrite, fds[1], buf, readn);
+			if(writen != readn)
+				break;
 		}
-		write(fds[0], buf, ret);
 	}
 }
 

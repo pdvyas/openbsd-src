@@ -85,12 +85,14 @@ control_dispatch_vmd(int fd, struct privsep_proc *p, struct imsg *imsg)
 	case IMSG_VMDOP_START_VM_RESPONSE:
 	case IMSG_VMDOP_PAUSE_VM_RESPONSE:
 	case IMSG_VMDOP_SEND_VM_RESPONSE:
+	case IMSG_VMDOP_RECEIVE_VM_RESPONSE:
 	case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
 	case IMSG_VMDOP_TERMINATE_VM_RESPONSE:
 	case IMSG_VMDOP_GET_INFO_VM_DATA:
 	case IMSG_VMDOP_GET_INFO_VM_END_DATA:
 	case IMSG_CTL_FAIL:
 	case IMSG_CTL_OK:
+		log_info("sending response");
 		if ((c = control_connbyfd(imsg->hdr.peerid)) == NULL) {
 			log_warnx("%s: lost control connection: fd %d",
 			    __func__, imsg->hdr.peerid);
@@ -369,27 +371,15 @@ control_dispatch_imsg(int fd, short event, void *arg)
 			log_setverbose(v);
 
 			/* FALLTHROUGH */
-		case IMSG_VMDOP_RECEIVE_VM:
-			if (proc_compose_imsg(ps, PROC_PARENT, -1,
-			    imsg.hdr.type, imsg.hdr.peerid, imsg.fd,
-			    imsg.data, IMSG_DATA_SIZE(&imsg)) == -1) {
-				control_close(fd, cs);
-				return;
-			}
+		case IMSG_VMDOP_RECEIVE_VM_REQUEST:
 		case IMSG_VMDOP_SEND_VM_REQUEST:
 		case IMSG_VMDOP_PAUSE_VM:
 		case IMSG_VMDOP_UNPAUSE_VM:
-			if (proc_compose_imsg(ps, PROC_PARENT, -1,
-			    imsg.hdr.type, fd, imsg.fd,
-			    imsg.data, IMSG_DATA_SIZE(&imsg)) == -1) {
-				control_close(fd, cs);
-				return;
-			}
 		case IMSG_VMDOP_LOAD:
 		case IMSG_VMDOP_RELOAD:
 		case IMSG_CTL_RESET:
 			if (proc_compose_imsg(ps, PROC_PARENT, -1,
-			    imsg.hdr.type, fd, -1,
+			    imsg.hdr.type, fd, imsg.fd,
 			    imsg.data, IMSG_DATA_SIZE(&imsg)) == -1)
 				goto fail;
 			break;
