@@ -503,8 +503,11 @@ vm_dispatch_vmm(int fd, short event, void *arg)
 			break;
 		case IMSG_VMDOP_SEND_VM_REQUEST:
 			vmr.vmr_result = 0;
-			vmr.vmr_id = vm->vm_params.vmc_params.vcp_id;
+			vmr.vmr_id = vm->vm_vmid;
 			send_vm(imsg.fd, &vm->vm_params.vmc_params);
+			imsg_compose_event(&vm->vm_iev,
+			    IMSG_VMDOP_SEND_VM_RESPONSE, imsg.hdr.peerid, imsg.hdr.pid,
+			    -1, &vmr, sizeof(vmr));
 			break;
 		default:
 			fatalx("%s: got invalid imsg %d from %s",
@@ -553,13 +556,12 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 
 	i8253_stop();
 	mc146818_stop();
-	sleep(1);
 	vmc = calloc(1, sizeof(struct vmop_create_params));
 	flags |= VMOP_CREATE_MEMORY;
 	memcpy(&vmc->vmc_params, &current_vm->vm_params, sizeof(struct vmop_create_params));
 	vmc->vmc_flags = flags;
 	pause_vm(vcp);
-	sleep(3);	
+	sleep(1);	
 	vrp.vrwp_vm_id = vcp->vcp_id;
 	vrp.vrwp_mask = -1;
 

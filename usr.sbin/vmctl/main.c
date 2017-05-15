@@ -75,8 +75,8 @@ struct ctl_command ctl_commands[] = {
 	{ "stop",	CMD_STOP,	ctl_stop,	"id" },
 	{ "pause",	CMD_PAUSE,	ctl_pause,	"id" },
 	{ "unpause",	CMD_UNPAUSE,	ctl_unpause,	"id" },
-	{ "send",	CMD_SEND,	ctl_send,	"id" },
-	{ "receive",	CMD_RECEIVE,	ctl_receive,	"id" },
+	{ "send",	CMD_SEND,	ctl_send,	"id",	1},
+	{ "receive",	CMD_RECEIVE,	ctl_receive,	"id" ,	1},
 	{ NULL }
 };
 
@@ -159,7 +159,7 @@ parse(int argc, char *argv[])
 
 	if (!ctl->has_pledge) {
 		/* pledge(2) default if command doesn't have its own pledge */
-		if (pledge("stdio rpath exec unix getpw sendfd recvfd", NULL) == -1)
+		if (pledge("stdio rpath exec unix getpw", NULL) == -1)
 			err(1, "pledge");
 	}
 	if (ctl->main(&res, argc, argv) != 0)
@@ -243,8 +243,7 @@ vmmaction(struct parse_result *res)
 		send_vm(res->id, res->name);
 		break;
 	case CMD_RECEIVE:
-		recv_vm(res->id, res->name);
-		done = 1;
+		vm_receive(res->id, res->name);
 		break;
 	case CMD_CREATE:
 	case NONE:
@@ -301,6 +300,10 @@ vmmaction(struct parse_result *res)
 				break;
 			case CMD_SEND:
 				done = send_vm_complete(&imsg, &ret);
+				break;
+			case CMD_RECEIVE:
+				done = vm_start_complete(&imsg, &ret,
+				    0);
 				break;
 			case CMD_UNPAUSE:
 				done = unpause_vm_complete(&imsg, &ret);
@@ -427,6 +430,33 @@ parse_vmid(struct parse_result *res, char *word)
 	if (error == NULL) {
 		res->id = id;
 		res->name = NULL;
+	} else {
+		if (strlen(word) >= VMM_MAX_NAME_LEN) {
+			warnx("name too long");
+			return (-1);
+		}
+		res->id = 0;
+		if ((res->name = strdup(word)) == NULL)
+			errx(1, "strdup");
+	}
+
+	return (0);
+}
+
+int
+parse_vmname(struct parse_result *res, char *word)
+{
+	const char	*error;
+	uint32_t	 id;
+
+	if (word == NULL) {
+		warnx("missing vmid argument");
+		return (-1);
+	}
+	id = strtonum(word, 0, UINT32_MAX, &error);
+	if (error == NULL) {
+		warnx("invalid vm name");
+		return (-1);
 	} else {
 		if (strlen(word) >= VMM_MAX_NAME_LEN) {
 			warnx("name too long");
@@ -673,6 +703,8 @@ ctl_unpause(struct parse_result *res, int argc, char *argv[])
 int
 ctl_send(struct parse_result *res, int argc, char *argv[])
 {
+	if (pledge("stdio unix recvfd", NULL) == -1)
+		err(1, "pledge");
 	if (argc == 2) {
 		if (parse_vmid(res, argv[1]) == -1)
 			errx(1, "invalid id: %s", argv[1]);
@@ -685,8 +717,10 @@ ctl_send(struct parse_result *res, int argc, char *argv[])
 int
 ctl_receive(struct parse_result *res, int argc, char *argv[])
 {
+	if (pledge("stdio unix sendfd", NULL) == -1)
+		err(1, "pledge");
 	if (argc == 2) {
-		if (parse_vmid(res, argv[1]) == -1)
+		if (parse_vmname(res, argv[1]) == -1)
 			errx(1, "invalid id: %s", argv[1]);
 	} else if (argc != 2)
 		ctl_usage(res->ctl);

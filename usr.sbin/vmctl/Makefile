@@ -3,7 +3,7 @@
 .if ${MACHINE} == "amd64" || ${MACHINE} == "i386"
 
 PROG=	vmctl
-SRCS=	vmctl.c main.c
+SRCS=	vmctl.c main.c atomicio.c
 CFLAGS+= -Wall
 CFLAGS+= -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+= -Wmissing-declarations
