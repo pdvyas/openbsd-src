@@ -302,8 +302,7 @@ vmmaction(struct parse_result *res)
 				done = send_vm_complete(&imsg, &ret);
 				break;
 			case CMD_RECEIVE:
-				done = vm_start_complete(&imsg, &ret,
-				    0);
+				done = vm_start_complete(&imsg, &ret, 0);
 				break;
 			case CMD_UNPAUSE:
 				done = unpause_vm_complete(&imsg, &ret);

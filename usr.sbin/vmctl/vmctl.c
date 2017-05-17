@@ -173,7 +173,6 @@ vm_start_complete(struct imsg *imsg, int *ret, int autoconnect)
 {
 	struct vmop_result *vmr;
 	int res;
-	printf("here\n");
 
 	if (imsg->hdr.type == IMSG_VMDOP_START_VM_RESPONSE) {
 		vmr = (struct vmop_result *)imsg->data;
@@ -207,10 +206,9 @@ send_vm(uint32_t id, const char *name)
 	vid.vid_id = id;
 	if (name != NULL)
 		(void)strlcpy(vid.vid_name, name, sizeof(vid.vid_name));
-	
+
 	imsg_compose(ibuf, IMSG_VMDOP_SEND_VM_REQUEST, 0, 0, -1,
 	    &vid, sizeof(vid));
-
 }
 
 int
@@ -227,12 +225,13 @@ send_vm_complete(struct imsg *imsg, int *ret)
 			warn("send vm command failed %d", fd);
 			*ret = EIO;
 		} else {
-			while(1) {
+			while (1) {
 				readn = atomicio(read, fd, buf, sizeof(buf));
-				if(!readn)
+				if (!readn)
 					break;
-				writen = atomicio(vwrite, STDOUT_FILENO, buf, readn);
-				if(writen != readn)
+				writen = atomicio(vwrite, STDOUT_FILENO, buf,
+				    readn);
+				if (writen != readn)
 					break;
 			}
 			warnx("sent vm %d successfully", vmr->vmr_id);
@@ -261,12 +260,12 @@ vm_receive(uint32_t id, const char *name)
 		imsg_compose(ibuf, IMSG_VMDOP_RECEIVE_VM_REQUEST, 0, 0, fds[0],
 				&vid, sizeof(vid));
 		imsg_flush(ibuf);
-		while(1) {
+		while (1) {
 			readn = atomicio(read, STDIN_FILENO, buf, sizeof(buf));
-			if(!readn)
+			if (!readn)
 				break;
 			writen = atomicio(vwrite, fds[1], buf, readn);
-			if(writen != readn)
+			if (writen != readn)
 				break;
 		}
 	}
