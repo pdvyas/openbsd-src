@@ -40,6 +40,7 @@
 #include <grp.h>
 
 #include "proc.h"
+#include "atomicio.h"
 #include "vmd.h"
 
 __dead void usage(void);
@@ -69,7 +70,7 @@ int
 vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 {
 	struct privsep			*ps = p->p_ps;
-	int				 res = 0, ret = 0, cmd = 0, verbose;
+	int				 res = 0, ret = 0, cmd = 0, verbose, fds[2];
 	unsigned int			 v = 0;
 	struct vmop_create_params	 vmc;
 	struct vmop_id			 vid;
@@ -160,6 +161,82 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 		proc_forward_imsg(ps, imsg, PROC_PRIV, -1);
 		cmd = IMSG_CTL_OK;
 		break;
+	case IMSG_VMDOP_PAUSE_VM:
+	case IMSG_VMDOP_UNPAUSE_VM:
+		IMSG_SIZE_CHECK(imsg, &vid);
+		memcpy(&vid, imsg->data, sizeof(vid));
+		if (vid.vid_id == 0) {
+			if ((vm = vm_getbyname(vid.vid_name)) == NULL) {
+				res = ENOENT;
+				cmd = IMSG_VMDOP_PAUSE_VM_RESPONSE;
+				break;
+			} else {
+				vid.vid_id = vm->vm_vmid;
+			}
+		}
+		proc_compose_imsg(ps, PROC_VMM, -1, imsg->hdr.type,
+				imsg->hdr.peerid, -1, &vid, sizeof(vid));
+		break;
+	case IMSG_VMDOP_SEND_VM_REQUEST:
+		IMSG_SIZE_CHECK(imsg, &vid);
+		memcpy(&vid, imsg->data, sizeof(vid));
+		id = vid.vid_id;
+		if (vid.vid_id == 0) {
+			if ((vm = vm_getbyname(vid.vid_name)) == NULL) {
+				res = ENOENT;
+				cmd = IMSG_VMDOP_SEND_VM_RESPONSE;
+				break;
+			} else {
+				vid.vid_id = vm->vm_vmid;
+			}
+		} else if ((vm = vm_getbyvmid(vid.vid_id)) == NULL) {
+				res = ENOENT;
+				cmd = IMSG_VMDOP_SEND_VM_RESPONSE;
+				break;
+			} else {
+		}
+		vmr.vmr_id = vid.vid_id;
+		if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fds) == -1) {
+			res = errno;
+			log_debug("%s: socketpair creation failed", __func__);
+		} else {
+			log_debug("%s: sending fd to vmctl", __func__);
+			proc_compose_imsg(ps, PROC_CONTROL, -1, IMSG_VMDOP_SEND_VM_RESPONSE,
+			    imsg->hdr.peerid, fds[0], &vmr, sizeof(vmr));
+			proc_compose_imsg(ps, PROC_VMM, -1, imsg->hdr.type,
+			    imsg->hdr.peerid, fds[1], &vid, sizeof(vid));
+		}
+		break;
+	case IMSG_VMDOP_RECEIVE_VM_REQUEST:
+		IMSG_SIZE_CHECK(imsg, &vid);
+		memcpy(&vid, imsg->data, sizeof(vid));
+		if (imsg->fd == -1) {
+			log_warnx("%s: invalid fd", __func__);
+			return (-1);
+		}
+		log_debug("%s: sending fd to vmctl", __func__);
+		log_info("reading vmc");
+		if (atomicio(read, imsg->fd, &vmc, sizeof(vmc)) !=
+				sizeof(vmc)) {
+			log_warnx("%s: error reading vmc from recevied vm", __func__);
+			return (-1);
+		}
+		strlcpy(vmc.vmc_params.vcp_name, vid.vid_name, sizeof(vmc.vmc_params.vcp_name));
+		vmc.vmc_params.vcp_id = 0;
+
+		ret = vm_register(ps, &vmc, &vm, 0, vmc.vmc_uid);
+		log_info("%s: %d", __func__, ret);
+		if (ret != 0) {
+			res = errno;
+			cmd = IMSG_VMDOP_START_VM_RESPONSE;
+			close(imsg->fd);
+		} else {
+			vm->vm_received = 1;
+			config_set_receivedvm(ps, vm, imsg->hdr.peerid, vmc.vmc_uid);
+			proc_compose_imsg(ps, PROC_VMM, -1,
+					IMSG_VMDOP_RECEIVE_VM_END, vm->vm_vmid, imsg->fd,  NULL, 0);
+		}
+		break;
 	default:
 		return (-1);
 	}
@@ -197,6 +274,13 @@ vmd_dispatch_vmm(int fd, struct privsep_proc *p, struct imsg *imsg)
 	struct vmop_info_result	 vir;
 
 	switch (imsg->hdr.type) {
+	case IMSG_VMDOP_PAUSE_VM_RESPONSE:
+	case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
+		IMSG_SIZE_CHECK(imsg, &vmr);
+		proc_compose_imsg(ps, PROC_CONTROL, -1,
+					imsg->hdr.type, imsg->hdr.peerid, -1,
+					imsg->data, sizeof(imsg->data));
+		break;
 	case IMSG_VMDOP_START_VM_RESPONSE:
 		IMSG_SIZE_CHECK(imsg, &vmr);
 		memcpy(&vmr, imsg->data, sizeof(vmr));
@@ -253,16 +337,20 @@ vmd_dispatch_vmm(int fd, struct privsep_proc *p, struct imsg *imsg)
 			vm->vm_shutdown = 1;
 		}
 		break;
+	case IMSG_VMDOP_SEND_VM_RESPONSE:
 	case IMSG_VMDOP_TERMINATE_VM_EVENT:
 		IMSG_SIZE_CHECK(imsg, &vmr);
 		memcpy(&vmr, imsg->data, sizeof(vmr));
+		log_info("here: removing %d", vmr.vmr_id);
 		if ((vm = vm_getbyvmid(vmr.vmr_id)) == NULL)
 			break;
+		log_info("here");
 		if (vmr.vmr_result == 0) {
 			if (vm->vm_from_config)
 				vm_stop(vm, 0);
 			else
 				vm_remove(vm);
+			
 		} else if (vmr.vmr_result == EAGAIN) {
 			/* Stop VM instance but keep the tty open */
 			vm_stop(vm, 1);
@@ -529,10 +617,11 @@ vmd_configure(void)
 	 * tty - for openpty.
 	 * proc - run kill to terminate its children safely.
 	 * sendfd - for disks, interfaces and other fds.
+	 * recvfd - for send and receive.
 	 * getpw - lookup user or group id by name.
 	 * chown, fattr - change tty ownership
 	 */
-	if (pledge("stdio rpath wpath proc tty sendfd getpw"
+	if (pledge("stdio rpath wpath proc tty recvfd sendfd getpw"
 	    " chown fattr", NULL) == -1)
 		fatal("pledge");
 

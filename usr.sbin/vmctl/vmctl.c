@@ -40,6 +40,7 @@
 
 #include "vmd.h"
 #include "vmctl.h"
+#include "atomicio.h"
 
 extern char *__progname;
 uint32_t info_id;
@@ -186,6 +187,158 @@ vm_start_complete(struct imsg *imsg, int *ret, int autoconnect)
 		} else {
 			warnx("started vm %d successfully, tty %s",
 			    vmr->vmr_id, vmr->vmr_ttyname);
+			*ret = 0;
+		}
+	} else {
+		warnx("unexpected response received from vmd");
+		*ret = EINVAL;
+	}
+
+	return (1);
+}
+
+void
+send_vm(uint32_t id, const char *name)
+{
+	struct vmop_id vid;
+
+	memset(&vid, 0, sizeof(vid));
+	vid.vid_id = id;
+	if (name != NULL)
+		(void)strlcpy(vid.vid_name, name, sizeof(vid.vid_name));
+
+	imsg_compose(ibuf, IMSG_VMDOP_SEND_VM_REQUEST, 0, 0, -1,
+	    &vid, sizeof(vid));
+}
+
+int
+send_vm_complete(struct imsg *imsg, int *ret)
+{
+	struct vmop_result *vmr;
+	char buf[PAGE_SIZE];
+	int readn, writen, fd;
+
+	if (imsg->hdr.type == IMSG_VMDOP_SEND_VM_RESPONSE) {
+		vmr = (struct vmop_result *)imsg->data;
+		fd = imsg->fd;
+		if (fd < 0 || vmr->vmr_result) {
+			warn("send vm command failed %d", fd);
+			*ret = EIO;
+		} else {
+			while (1) {
+				readn = atomicio(read, fd, buf, sizeof(buf));
+				if (!readn)
+					break;
+				writen = atomicio(vwrite, STDOUT_FILENO, buf,
+				    readn);
+				if (writen != readn)
+					break;
+			}
+			warnx("sent vm %d successfully", vmr->vmr_id);
+			*ret = 0;
+		}
+	} else {
+		warnx("unexpected response received from vmd");
+		*ret = EINVAL;
+	}
+
+	return (1);
+}
+
+void
+vm_receive(uint32_t id, const char *name)
+{
+	struct vmop_id vid;
+	int fds[2], readn, writen;
+	char buf[PAGE_SIZE];
+
+	memset(&vid, 0, sizeof(vid));
+	strlcpy(vid.vid_name, name, sizeof(vid.vid_name));
+	if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fds) == -1) {
+		warnx("%s: socketpair creation failed", __func__);
+	} else {
+		imsg_compose(ibuf, IMSG_VMDOP_RECEIVE_VM_REQUEST, 0, 0, fds[0],
+				&vid, sizeof(vid));
+		imsg_flush(ibuf);
+		while (1) {
+			readn = atomicio(read, STDIN_FILENO, buf, sizeof(buf));
+			if (!readn)
+				break;
+			writen = atomicio(vwrite, fds[1], buf, readn);
+			if (writen != readn)
+				break;
+		}
+	}
+}
+
+void
+pause_vm(uint32_t pause_id, const char *name)
+{
+	struct vmop_id vid;
+
+	memset(&vid, 0, sizeof(vid));
+	vid.vid_id = pause_id;
+	if (name != NULL)
+		(void)strlcpy(vid.vid_name, name, sizeof(vid.vid_name));
+
+	imsg_compose(ibuf, IMSG_VMDOP_PAUSE_VM, 0, 0, -1,
+	    &vid, sizeof(vid));
+}
+
+int
+pause_vm_complete(struct imsg *imsg, int *ret)
+{
+	struct vmop_result *vmr;
+	int res;
+
+	if (imsg->hdr.type == IMSG_VMDOP_PAUSE_VM_RESPONSE) {
+		vmr = (struct vmop_result *)imsg->data;
+		res = vmr->vmr_result;
+		if (res) {
+			errno = res;
+			warn("pause vm command failed");
+			*ret = EIO;
+		} else {
+			warnx("paused vm %d successfully", vmr->vmr_id);
+			*ret = 0;
+		}
+	} else {
+		warnx("unexpected response received from vmd");
+		*ret = EINVAL;
+	}
+
+	return (1);
+}
+
+void
+unpause_vm(uint32_t pause_id, const char *name)
+{
+	struct vmop_id vid;
+
+	memset(&vid, 0, sizeof(vid));
+	vid.vid_id = pause_id;
+	if (name != NULL)
+		(void)strlcpy(vid.vid_name, name, sizeof(vid.vid_name));
+
+	imsg_compose(ibuf, IMSG_VMDOP_UNPAUSE_VM, 0, 0, -1,
+	    &vid, sizeof(vid));
+}
+
+int
+unpause_vm_complete(struct imsg *imsg, int *ret)
+{
+	struct vmop_result *vmr;
+	int res;
+
+	if (imsg->hdr.type == IMSG_VMDOP_UNPAUSE_VM_RESPONSE) {
+		vmr = (struct vmop_result *)imsg->data;
+		res = vmr->vmr_result;
+		if (res) {
+			errno = res;
+			warn("unpause vm command failed");
+			*ret = EIO;
+		} else {
+			warnx("unpaused vm %d successfully", vmr->vmr_id);
 			*ret = 0;
 		}
 	} else {
