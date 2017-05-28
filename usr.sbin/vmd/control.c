@@ -71,7 +71,7 @@ control_run(struct privsep *ps, struct privsep_proc *p, void *arg)
 	 * unix - for the control socket.
 	 * recvfd - for the proc fd exchange.
 	 */
-	if (pledge("stdio cpath unix recvfd", NULL) == -1)
+	if (pledge("stdio cpath unix recvfd sendfd", NULL) == -1)
 		fatal("pledge");
 }
 
@@ -83,18 +83,23 @@ control_dispatch_vmd(int fd, struct privsep_proc *p, struct imsg *imsg)
 
 	switch (imsg->hdr.type) {
 	case IMSG_VMDOP_START_VM_RESPONSE:
+	case IMSG_VMDOP_PAUSE_VM_RESPONSE:
+	case IMSG_VMDOP_SEND_VM_RESPONSE:
+	case IMSG_VMDOP_RECEIVE_VM_RESPONSE:
+	case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
 	case IMSG_VMDOP_TERMINATE_VM_RESPONSE:
 	case IMSG_VMDOP_GET_INFO_VM_DATA:
 	case IMSG_VMDOP_GET_INFO_VM_END_DATA:
 	case IMSG_CTL_FAIL:
 	case IMSG_CTL_OK:
+		log_info("sending response");
 		if ((c = control_connbyfd(imsg->hdr.peerid)) == NULL) {
 			log_warnx("%s: lost control connection: fd %d",
 			    __func__, imsg->hdr.peerid);
 			return (0);
 		}
 		imsg_compose_event(&c->iev, imsg->hdr.type,
-		    0, 0, -1, imsg->data, IMSG_DATA_SIZE(imsg));
+		    0, 0, imsg->fd, imsg->data, IMSG_DATA_SIZE(imsg));
 		break;
 	case IMSG_VMDOP_CONFIG:
 		config_getconfig(ps->ps_env, imsg);
@@ -366,11 +371,15 @@ control_dispatch_imsg(int fd, short event, void *arg)
 			log_setverbose(v);
 
 			/* FALLTHROUGH */
+		case IMSG_VMDOP_RECEIVE_VM_REQUEST:
+		case IMSG_VMDOP_SEND_VM_REQUEST:
+		case IMSG_VMDOP_PAUSE_VM:
+		case IMSG_VMDOP_UNPAUSE_VM:
 		case IMSG_VMDOP_LOAD:
 		case IMSG_VMDOP_RELOAD:
 		case IMSG_CTL_RESET:
 			if (proc_compose_imsg(ps, PROC_PARENT, -1,
-			    imsg.hdr.type, fd, -1,
+			    imsg.hdr.type, fd, imsg.fd,
 			    imsg.data, IMSG_DATA_SIZE(&imsg)) == -1)
 				goto fail;
 			break;
