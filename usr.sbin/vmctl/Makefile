@@ -2,7 +2,7 @@
 
 .if ${MACHINE} == "amd64" || ${MACHINE} == "i386"
 
-.PATH:		${.CURDIR}/../vmd
+.PATH:	${.CURDIR}/../vmd
 
 PROG=	vmctl
 SRCS=	vmctl.c main.c atomicio.c
