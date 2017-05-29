@@ -196,16 +196,9 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 			} else {
 		}
 		vmr.vmr_id = vid.vid_id;
-		if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fds) == -1) {
-			res = errno;
-			log_debug("%s: socketpair creation failed", __func__);
-		} else {
-			log_debug("%s: sending fd to vmctl", __func__);
-			proc_compose_imsg(ps, PROC_CONTROL, -1, IMSG_VMDOP_SEND_VM_RESPONSE,
-			    imsg->hdr.peerid, fds[0], &vmr, sizeof(vmr));
-			proc_compose_imsg(ps, PROC_VMM, -1, imsg->hdr.type,
-			    imsg->hdr.peerid, fds[1], &vid, sizeof(vid));
-		}
+		log_debug("%s: sending fd to vmctl", __func__);
+		proc_compose_imsg(ps, PROC_VMM, -1, imsg->hdr.type,
+		    imsg->hdr.peerid, imsg->fd, &vid, sizeof(vid));
 		break;
 	case IMSG_VMDOP_RECEIVE_VM_REQUEST:
 		IMSG_SIZE_CHECK(imsg, &vid);
@@ -215,7 +208,6 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 			return (-1);
 		}
 		log_debug("%s: sending fd to vmctl", __func__);
-		log_info("reading vmc");
 		if (atomicio(read, imsg->fd, &vmc, sizeof(vmc)) !=
 				sizeof(vmc)) {
 			log_warnx("%s: error reading vmc from recevied vm", __func__);
@@ -232,7 +224,7 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 			close(imsg->fd);
 		} else {
 			vm->vm_received = 1;
-			config_set_receivedvm(ps, vm, imsg->hdr.peerid, vmc.vmc_uid);
+			config_setvm(ps, vm, imsg->hdr.peerid, vmc.vmc_uid);
 			proc_compose_imsg(ps, PROC_VMM, -1,
 					IMSG_VMDOP_RECEIVE_VM_END, vm->vm_vmid, imsg->fd,  NULL, 0);
 		}
@@ -344,7 +336,6 @@ vmd_dispatch_vmm(int fd, struct privsep_proc *p, struct imsg *imsg)
 		log_info("here: removing %d", vmr.vmr_id);
 		if ((vm = vm_getbyvmid(vmr.vmr_id)) == NULL)
 			break;
-		log_info("here");
 		if (vmr.vmr_result == 0) {
 			if (vm->vm_from_config)
 				vm_stop(vm, 0);

@@ -241,6 +241,7 @@ vmmaction(struct parse_result *res)
 		break;
 	case CMD_SEND:
 		send_vm(res->id, res->name);
+		done = 1; 
 		break;
 	case CMD_RECEIVE:
 		vm_receive(res->id, res->name);
@@ -297,9 +298,6 @@ vmmaction(struct parse_result *res)
 				break;
 			case CMD_PAUSE:
 				done = pause_vm_complete(&imsg, &ret);
-				break;
-			case CMD_SEND:
-				done = send_vm_complete(&imsg, &ret);
 				break;
 			case CMD_RECEIVE:
 				done = vm_start_complete(&imsg, &ret, 0);
@@ -702,7 +700,7 @@ ctl_unpause(struct parse_result *res, int argc, char *argv[])
 int
 ctl_send(struct parse_result *res, int argc, char *argv[])
 {
-	if (pledge("stdio unix recvfd", NULL) == -1)
+	if (pledge("stdio unix sendfd", NULL) == -1)
 		err(1, "pledge");
 	if (argc == 2) {
 		if (parse_vmid(res, argv[1]) == -1)
