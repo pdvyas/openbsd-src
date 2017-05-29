@@ -92,7 +92,6 @@ control_dispatch_vmd(int fd, struct privsep_proc *p, struct imsg *imsg)
 	case IMSG_VMDOP_GET_INFO_VM_END_DATA:
 	case IMSG_CTL_FAIL:
 	case IMSG_CTL_OK:
-		log_info("sending response");
 		if ((c = control_connbyfd(imsg->hdr.peerid)) == NULL) {
 			log_warnx("%s: lost control connection: fd %d",
 			    __func__, imsg->hdr.peerid);
