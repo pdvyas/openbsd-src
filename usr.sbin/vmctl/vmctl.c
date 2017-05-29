@@ -201,14 +201,29 @@ void
 send_vm(uint32_t id, const char *name)
 {
 	struct vmop_id vid;
+	int fds[2], readn, writen;
+	char buf[PAGE_SIZE];
 
 	memset(&vid, 0, sizeof(vid));
 	vid.vid_id = id;
 	if (name != NULL)
-		(void)strlcpy(vid.vid_name, name, sizeof(vid.vid_name));
-
-	imsg_compose(ibuf, IMSG_VMDOP_SEND_VM_REQUEST, 0, 0, -1,
-	    &vid, sizeof(vid));
+		strlcpy(vid.vid_name, name, sizeof(vid.vid_name));
+	if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fds) == -1) {
+		warnx("%s: socketpair creation failed", __func__);
+	} else {
+		imsg_compose(ibuf, IMSG_VMDOP_SEND_VM_REQUEST, 0, 0, fds[0],
+				&vid, sizeof(vid));
+		imsg_flush(ibuf);
+		while (1) {
+			readn = atomicio(read, fds[1], buf, sizeof(buf));
+			if (!readn)
+				break;
+			writen = atomicio(vwrite, STDOUT_FILENO, buf,
+					readn);
+			if (writen != readn)
+				break;
+		}
+	}
 }
 
 int
@@ -226,13 +241,6 @@ send_vm_complete(struct imsg *imsg, int *ret)
 			*ret = EIO;
 		} else {
 			while (1) {
-				readn = atomicio(read, fd, buf, sizeof(buf));
-				if (!readn)
-					break;
-				writen = atomicio(vwrite, STDOUT_FILENO, buf,
-				    readn);
-				if (writen != readn)
-					break;
 			}
 			warnx("sent vm %d successfully", vmr->vmr_id);
 			*ret = 0;
@@ -253,7 +261,8 @@ vm_receive(uint32_t id, const char *name)
 	char buf[PAGE_SIZE];
 
 	memset(&vid, 0, sizeof(vid));
-	strlcpy(vid.vid_name, name, sizeof(vid.vid_name));
+	if (name != NULL)
+		strlcpy(vid.vid_name, name, sizeof(vid.vid_name));
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fds) == -1) {
 		warnx("%s: socketpair creation failed", __func__);
 	} else {
