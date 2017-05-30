@@ -221,8 +221,8 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 			break;
 		}
 		imsg_compose_event(&vm->vm_iev,
-			imsg->hdr.type, imsg->hdr.peerid, imsg->hdr.pid,
-			imsg->fd, &vid, sizeof(vid));
+		    imsg->hdr.type, imsg->hdr.peerid, imsg->hdr.pid,
+		    imsg->fd, &vid, sizeof(vid));
 		break;
 	case IMSG_VMDOP_UNPAUSE_VM:
 		IMSG_SIZE_CHECK(imsg, &vid);
@@ -235,8 +235,8 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 			break;
 		}
 		imsg_compose_event(&vm->vm_iev,
-			imsg->hdr.type, imsg->hdr.peerid, imsg->hdr.pid,
-			imsg->fd, &vid, sizeof(vid));
+		    imsg->hdr.type, imsg->hdr.peerid, imsg->hdr.pid,
+		    imsg->fd, &vid, sizeof(vid));
 		break;
 	case IMSG_VMDOP_SEND_VM_REQUEST:
 		IMSG_SIZE_CHECK(imsg, &vid);
@@ -249,8 +249,8 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 			break;
 		}
 		imsg_compose_event(&vm->vm_iev,
-			imsg->hdr.type, imsg->hdr.peerid, imsg->hdr.pid,
-			imsg->fd, &vid, sizeof(vid));
+		    imsg->hdr.type, imsg->hdr.peerid, imsg->hdr.pid,
+		    imsg->fd, &vid, sizeof(vid));
 		break;
 	case IMSG_VMDOP_RECEIVE_VM_REQUEST:
 		IMSG_SIZE_CHECK(imsg, &vmc);
@@ -468,7 +468,7 @@ vmm_dispatch_vm(int fd, short event, void *arg)
 		case IMSG_VMDOP_PAUSE_VM_RESPONSE:
 			proc_forward_imsg(vmm_ps, &imsg, PROC_PARENT, -1);
 			break;
- 
+
 		default:
 			fatalx("%s: got invalid imsg %d from %s",
 			    __func__, imsg.hdr.type,
@@ -620,6 +620,7 @@ vmm_start_vm(struct imsg *imsg, uint32_t *id)
 	} else {
 		/* Child */
 		close(fds[0]);
+
 		ret = start_vm(vm, fds[1]);
 
 		_exit(ret);

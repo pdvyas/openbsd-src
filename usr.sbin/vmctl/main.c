@@ -241,7 +241,7 @@ vmmaction(struct parse_result *res)
 		break;
 	case CMD_SEND:
 		send_vm(res->id, res->name);
-		done = 1; 
+		done = 1;
 		break;
 	case CMD_RECEIVE:
 		vm_receive(res->id, res->name);
