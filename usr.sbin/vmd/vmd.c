@@ -220,7 +220,6 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 		vmc.vmc_params.vcp_id = 0;
 
 		ret = vm_register(ps, &vmc, &vm, 0, vmc.vmc_uid);
-		log_info("%s: %d", __func__, ret);
 		if (ret != 0) {
 			res = errno;
 			cmd = IMSG_VMDOP_START_VM_RESPONSE;
@@ -949,6 +948,7 @@ vm_register(struct privsep *ps, struct vmop_create_params *vmc,
 	vcp = &vmc->vmc_params;
 	vm->vm_pid = -1;
 	vm->vm_tty = -1;
+	vm->vm_receive_fd = -1;
 
 	for (i = 0; i < vcp->vcp_ndisks; i++)
 		vm->vm_disks[i] = -1;
