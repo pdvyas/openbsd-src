@@ -198,7 +198,8 @@ struct vmd_vm {
 	struct imsgev		 vm_iev;
 	int			 vm_shutdown;
 	uid_t			 vm_uid;
-	int			vm_received;
+	int			 vm_received;
+	int			 vm_receive_fd;
 
 	TAILQ_ENTRY(vmd_vm)	 vm_entry;
 };
