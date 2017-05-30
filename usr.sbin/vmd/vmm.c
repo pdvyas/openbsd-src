@@ -257,11 +257,18 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		memcpy(&vmc, imsg->data, sizeof(vmc));
 		ret = vm_register(ps, &vmc, &vm, 0, vmc.vmc_uid);
 		vm->vm_tty = imsg->fd;
+		vm->vm_received = 1;
 		break;
 	case IMSG_VMDOP_RECEIVE_VM_END:
-		id = imsg->hdr.peerid;
-		vm = vm_getbyvmid(id);
-		res = vmm_receive_vm(vm, imsg->fd);
+		if ((vm = vm_getbyvmid(imsg->hdr.peerid)) == NULL) {
+			log_info("here");
+			res = ENOENT;
+			close(imsg->fd);
+			cmd = IMSG_VMDOP_START_VM_RESPONSE;
+			break;
+		}
+		vm->vm_receive_fd = imsg->fd;
+		res = vmm_start_vm(imsg, &id);
 		cmd = IMSG_VMDOP_START_VM_RESPONSE;
 		break;
 	default:
@@ -555,9 +562,11 @@ vmm_start_vm(struct imsg *imsg, uint32_t *id)
 	}
 	vcp = &vm->vm_params.vmc_params;
 
-	if ((vm->vm_tty = imsg->fd) == -1) {
-		log_warnx("%s: can't get tty", __func__);
-		goto err;
+	if (!vm->vm_received) {
+		if ((vm->vm_tty = imsg->fd) == -1) {
+			log_warnx("%s: can't get tty", __func__);
+			goto err;
+		}
 	}
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fds) == -1)
@@ -611,82 +620,7 @@ vmm_start_vm(struct imsg *imsg, uint32_t *id)
 	} else {
 		/* Child */
 		close(fds[0]);
-
 		ret = start_vm(vm, fds[1]);
-
-		_exit(ret);
-	}
-
-	return (0);
-
- err:
-	vm_remove(vm);
-
-	return (ret);
-}
-
-int
-vmm_receive_vm(struct vmd_vm *vm, int fd)
-{
-	struct vm_create_params	*vcp;
-	int			 ret = EINVAL;
-	int			 fds[2];
-	unsigned int i;
-
-	vcp = &vm->vm_params.vmc_params;
-
-	if (socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC, fds) == -1)
-		fatal("socketpair");
-
-	/* Start child vmd for this VM (fork, chroot, drop privs) */
-	ret = fork();
-
-	/* Start child failed? - cleanup and leave */
-	if (ret == -1) {
-		log_warnx("%s: start child failed", __func__);
-		ret = EIO;
-		goto err;
-	}
-
-	if (ret > 0) {
-		/* Parent */
-		vm->vm_pid = ret;
-		close(fds[1]);
-
-		/* XXX: No disks and NICs yet */
-		for (i = 0 ; i < vcp->vcp_ndisks; i++) {
-			close(vm->vm_disks[i]);
-			vm->vm_disks[i] = -1;
-		}
-
-		for (i = 0 ; i < vcp->vcp_nnics; i++) {
-			close(vm->vm_ifs[i].vif_fd);
-			vm->vm_ifs[i].vif_fd = -1;
-		}
-
-		close(vm->vm_kernel);
-		vm->vm_kernel = -1;
-
-		close(vm->vm_tty);
-		vm->vm_tty = -1;
-
-		/* read back the kernel-generated vm id from the child */
-		if (read(fds[0], &vcp->vcp_id, sizeof(vcp->vcp_id)) !=
-		    sizeof(vcp->vcp_id))
-			fatal("read vcp id");
-
-		if (vcp->vcp_id == 0)
-			goto err;
-
-		if (vmm_pipe(vm, fds[0], vmm_dispatch_vm) == -1)
-			fatal("setup vm pipe");
-
-		return (0);
-	} else {
-		/* Child */
-		close(fds[0]);
-
-		ret = receive_vm(vm, fd, fds[1]);
 
 		_exit(ret);
 	}
