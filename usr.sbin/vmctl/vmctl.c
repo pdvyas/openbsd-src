@@ -267,7 +267,7 @@ vm_receive(uint32_t id, const char *name)
 		warnx("%s: socketpair creation failed", __func__);
 	} else {
 		imsg_compose(ibuf, IMSG_VMDOP_RECEIVE_VM_REQUEST, 0, 0, fds[0],
-				&vid, sizeof(vid));
+		    &vid, sizeof(vid));
 		imsg_flush(ibuf);
 		while (1) {
 			readn = atomicio(read, STDIN_FILENO, buf, sizeof(buf));

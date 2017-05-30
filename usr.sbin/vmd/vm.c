@@ -324,12 +324,12 @@ start_vm(struct vmd_vm *vm, int fd)
 
 		/* Find and open kernel image */
 		if ((fp = vmboot_open(vm->vm_kernel,
-						vm->vm_disks[0], &vmboot)) == NULL)
+		    vm->vm_disks[0], &vmboot)) == NULL)
 			fatalx("failed to open kernel - exiting");
 
 		/* Load kernel image */
 		ret = loadfile_elf(fp, vcp, &vrs,
-				vmboot.vbp_bootdev, vmboot.vbp_howto);
+		    vmboot.vbp_bootdev, vmboot.vbp_howto);
 
 		/*
 		 * Try BIOS as a fallback (only if it was provided as an image
@@ -357,7 +357,8 @@ start_vm(struct vmd_vm *vm, int fd)
 	event_init();
 
 	if (vm->vm_received) {
-		restore_emulated_hw(vcp, vm->vm_receive_fd, nicfds, vm->vm_disks);
+		restore_emulated_hw(vcp, vm->vm_receive_fd, nicfds,
+		    vm->vm_disks);
 		log_debug("emulated hw restored");
 		recvfp = fdopen(vm->vm_receive_fd, "r");
 
@@ -436,27 +437,30 @@ vm_dispatch_vmm(int fd, short event, void *arg)
 			vmr.vmr_result = 0;
 			vmr.vmr_id = vm->vm_vmid;
 			pause_vm(&vm->vm_params.vmc_params);
-			log_info("Paused vm %d successfully.", vmr.vmr_id);
+			log_info("paused vm %d successfully.", vmr.vmr_id);
 			imsg_compose_event(&vm->vm_iev,
-			    IMSG_VMDOP_PAUSE_VM_RESPONSE, imsg.hdr.peerid, imsg.hdr.pid,
-			    -1, &vmr, sizeof(vmr));
+			    IMSG_VMDOP_PAUSE_VM_RESPONSE,
+			    imsg.hdr.peerid, imsg.hdr.pid, -1, &vmr,
+			    sizeof(vmr));
 			break;
 		case IMSG_VMDOP_UNPAUSE_VM:
 			vmr.vmr_result = 0;
 			vmr.vmr_id = vm->vm_vmid;
 			unpause_vm(&vm->vm_params.vmc_params);
-			log_info("Unpaused vm %d successfully.", vmr.vmr_id);
+			log_info("unpaused vm %d successfully.", vmr.vmr_id);
 			imsg_compose_event(&vm->vm_iev,
-			    IMSG_VMDOP_UNPAUSE_VM_RESPONSE, imsg.hdr.peerid, imsg.hdr.pid,
-			    -1, &vmr, sizeof(vmr));
+			    IMSG_VMDOP_UNPAUSE_VM_RESPONSE,
+			    imsg.hdr.peerid, imsg.hdr.pid, -1, &vmr,
+			    sizeof(vmr));
 			break;
 		case IMSG_VMDOP_SEND_VM_REQUEST:
 			vmr.vmr_result = 0;
 			vmr.vmr_id = vm->vm_vmid;
 			send_vm(imsg.fd, &vm->vm_params.vmc_params);
 			imsg_compose_event(&vm->vm_iev,
-			    IMSG_VMDOP_SEND_VM_RESPONSE, imsg.hdr.peerid, imsg.hdr.pid,
-			    -1, &vmr, sizeof(vmr));
+			    IMSG_VMDOP_SEND_VM_RESPONSE,
+			    imsg.hdr.peerid, imsg.hdr.pid, -1, &vmr,
+			    sizeof(vmr));
 			break;
 		default:
 			fatalx("%s: got invalid imsg %d from %s",
@@ -507,10 +511,11 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 	mc146818_stop();
 	vmc = calloc(1, sizeof(struct vmop_create_params));
 	flags |= VMOP_CREATE_MEMORY;
-	memcpy(&vmc->vmc_params, &current_vm->vm_params, sizeof(struct vmop_create_params));
+	memcpy(&vmc->vmc_params, &current_vm->vm_params, sizeof(struct
+	    vmop_create_params));
 	vmc->vmc_flags = flags;
 	pause_vm(vcp);
-	sleep(1);	
+	sleep(1);
 	vrp.vrwp_vm_id = vcp->vcp_id;
 	vrp.vrwp_mask = -1;
 
@@ -537,9 +542,9 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 	close(fd);
 	vtp.vtp_vm_id = vcp->vcp_id;
 	if (ioctl(env->vmd_fd, VMM_IOC_TERM, &vtp) < 0) {
-		log_info ("term IOC error: %d, %d", errno, ENOENT);
+		log_info("term IOC error: %d, %d", errno, ENOENT);
 	}
-	log_info("Sent vm %d successfully.", current_vm->vm_vmid);
+	log_info("sent vm %d successfully.", current_vm->vm_vmid);
 }
 
 void mwrite(int fd, struct vm_mem_range *vmr) {
@@ -937,7 +942,7 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
 	log_debug("%s: initializing hardware for vm %s", __func__,
 	    vcp->vcp_name);
 
-	if(!hardware_initialized) {
+	if (!hardware_initialized) {
 		init_emulated_hw(vmc, child_disks, child_taps);
 	}
 
@@ -994,8 +999,10 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
 
 		// once more becuase reset_cpu changes regs
 		if (current_vm->vm_received) {
-			if (ioctl(env->vmd_fd, VMM_IOC_WRITEREGS, &vregsp) < 0) {
-				log_info ("readregs IOC error: %d, %d", errno, ENOENT);
+			if (ioctl(env->vmd_fd, VMM_IOC_WRITEREGS,
+			    &vregsp) < 0) {
+				// TODO: Fix error message
+				log_info("readregs IOC error: %d, %d", errno, ENOENT);
 			}
 		}
 
@@ -1139,18 +1146,14 @@ vcpu_run_loop(void *arg)
 			    __func__, (int)ret);
 			return ((void *)ret);
 		}
-		
-		/* if (ioctl(env->vmd_fd, VMM_IOC_READREGS, &vmrp) < 0) { */
-		/* 	log_info ("readregs IOC error: %d, %d", errno, ENOENT); */
-		/* } */
-		/* dump_regs(&vmrp.vrwp_regs); */
  
 		/* If we are halted or paused, wait */
 		if (vcpu_hlt[n]) {
 			if (paused == 1) {
 				paused_vcpus += 1;
 				while (paused) {
-					ret = pthread_cond_wait(&vcpu_run_cond[n],
+					ret = pthread_cond_wait(
+					    &vcpu_run_cond[n],
 					    &vcpu_run_mtx[n]);
 					if (ret) {
 						log_warnx("%s: can't wait on cond (%d)",
@@ -1648,48 +1651,6 @@ mutex_unlock(pthread_mutex_t *m)
 		errno = ret;
 		fatal("could not release mutex");
 	}
-}
-
-void dump_regs(struct vcpu_reg_state *vrs) {
-	/* log_info("VCPU_REGS_RAX	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RAX]); */
-	/* log_info("VCPU_REGS_RBX	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RBX]); */
-	/* log_info("VCPU_REGS_RCX	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RCX]); */
-	/* log_info("VCPU_REGS_RDX	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RDX]); */
-	/* log_info("VCPU_REGS_RSI	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RSI]); */
-	/* log_info("VCPU_REGS_RDI	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RDI]); */
-	/* log_info("VCPU_REGS_R8	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R8]); */
-	/* log_info("VCPU_REGS_R9	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R9]); */
-	/* log_info("VCPU_REGS_R10	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R10]); */
-	/* log_info("VCPU_REGS_R11	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R11]); */
-	/* log_info("VCPU_REGS_R12	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R12]); */
-	/* log_info("VCPU_REGS_R13	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R13]); */
-	/* log_info("VCPU_REGS_R14	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R14]); */
-	/* log_info("VCPU_REGS_R15	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R15]); */
-	/* log_info("VCPU_REGS_RSP	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RSP]); */
-	/* log_info("VCPU_REGS_RBP	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RBP]); */
-	log_info("VCPU_REGS_RIP	   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RIP]);
-	/* log_info("VCPU_REGS_RFLAGS   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RFLAGS]); */
-	/* log_info("VCPU_REGS_CR0	   : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR0]); */
-	/* log_info("VCPU_REGS_CR2	   : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR2]); */
-	/* log_info("VCPU_REGS_CR3	   : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR3]); */
-	/* log_info("VCPU_REGS_CR4	   : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR4]); */
-	/* log_info("VCPU_REGS_CR8	   : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR8]); */
-	/* log_info("VCPU_REGS_CS	   : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_CS].vsi_base, vrs->vrs_sregs[VCPU_REGS_CS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_CS].vsi_sel); */
-	/* log_info("VCPU_REGS_DS	   : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_DS].vsi_base, vrs->vrs_sregs[VCPU_REGS_DS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_DS].vsi_sel); */
-	/* log_info("VCPU_REGS_ES	   : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_ES].vsi_base, vrs->vrs_sregs[VCPU_REGS_ES].vsi_limit, vrs->vrs_sregs[VCPU_REGS_ES].vsi_sel); */
-	/* log_info("VCPU_REGS_FS	   : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_FS].vsi_base, vrs->vrs_sregs[VCPU_REGS_FS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_FS].vsi_sel); */
-	/* log_info("VCPU_REGS_GS	   : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_GS].vsi_base, vrs->vrs_sregs[VCPU_REGS_GS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_GS].vsi_sel); */
-	/* log_info("VCPU_REGS_SS	   : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_SS].vsi_base, vrs->vrs_sregs[VCPU_REGS_SS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_SS].vsi_sel); */
-	/* log_info("VCPU_REGS_LDTR   : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_gdtr.vsi_base, vrs->vrs_gdtr.vsi_limit, vrs->vrs_gdtr.vsi_sel); */
-	/* log_info("VCPU_REGS_IDTR   : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_idtr.vsi_base, vrs->vrs_idtr.vsi_limit, vrs->vrs_idtr.vsi_sel); */
-
-
-	/* log_info("VCPU_REGS_EFER   	   : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_EFER]); */
-	/* log_info("VCPU_REGS_STAR   	   : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_STAR]); */
-	/* log_info("VCPU_REGS_LSTAR  	   : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_LSTAR]); */
-	/* log_info("VCPU_REGS_CSTAR  	   : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_CSTAR]); */
-	/* log_info("VCPU_REGS_SFMASK 	   : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_SFMASK]); */
-	/* log_info("VCPU_REGS_KGSBASE	   : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_KGSBASE]); */
 }
 
 /*
