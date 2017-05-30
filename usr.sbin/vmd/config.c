@@ -196,26 +196,30 @@ config_setvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, uid_t uid)
 
 	if (!vm->vm_received) {
 		if (strlen(vcp->vcp_kernel)) {
-			/* Boot kernel from disk image if path matches the root disk */
+			/* Boot kernel from disk image if path matches the root
+			 * disk */
 			if (vcp->vcp_ndisks &&
 			    strcmp(vcp->vcp_kernel, vcp->vcp_disks[0]) == 0)
 				vmboot = 1;
 			/* Open external kernel for child */
-			else if ((kernfd = open(vcp->vcp_kernel, O_RDONLY)) == -1) {
-				log_warn("%s: can't open kernel/BIOS boot image %s",
-				    __func__, vcp->vcp_kernel);
+			else if ((kernfd = open(vcp->vcp_kernel, O_RDONLY)) ==
+			    -1) {
+				log_warn("%s: can't open kernel/BIOS boot image\
+						%s", __func__, vcp->vcp_kernel);
 				goto fail;
 			}
 		}
 
 		/*
-		 * Try to open the default BIOS image if no kernel/BIOS has
-		 * been specified.  The BIOS is an external firmware file that is
-		 * typically distributed separately due to an incompatible license.
+		 * Try to open the default BIOS image if no kernel/BIOS has been
+		 * specified.  The BIOS is an external firmware file that is
+		 * typically distributed separately due to an incompatible
+		 * license.
 		 */
 		if (kernfd == -1 && !vmboot &&
 		    (kernfd = open(VM_DEFAULT_BIOS, O_RDONLY)) == -1) {
-			log_warn("%s: can't open %s", __func__, VM_DEFAULT_BIOS);
+			log_warn("%s: can't open %s", __func__,
+			    VM_DEFAULT_BIOS);
 			goto fail;
 		}
 	}
@@ -311,11 +315,12 @@ config_setvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, uid_t uid)
 	/* Send VM information */
 	if (vm->vm_received)
 		proc_compose_imsg(ps, PROC_VMM, -1,
-		    IMSG_VMDOP_RECEIVE_VM_REQUEST, vm->vm_vmid, fd,  vmc, sizeof(struct vmop_create_params));
+		    IMSG_VMDOP_RECEIVE_VM_REQUEST, vm->vm_vmid, fd,  vmc,
+		    sizeof(struct vmop_create_params));
 	else
 		proc_compose_imsg(ps, PROC_VMM, -1,
-				IMSG_VMDOP_START_VM_REQUEST, vm->vm_vmid, kernfd,
-				vmc, sizeof(*vmc));
+		    IMSG_VMDOP_START_VM_REQUEST, vm->vm_vmid, kernfd,
+		    vmc, sizeof(*vmc));
 	for (i = 0; i < vcp->vcp_ndisks; i++) {
 		proc_compose_imsg(ps, PROC_VMM, -1,
 		    IMSG_VMDOP_START_VM_DISK, vm->vm_vmid, diskfds[i],
@@ -329,7 +334,7 @@ config_setvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, uid_t uid)
 
 	if (!vm->vm_received)
 		proc_compose_imsg(ps, PROC_VMM, -1,
-				IMSG_VMDOP_START_VM_END, vm->vm_vmid, fd,  NULL, 0);
+		    IMSG_VMDOP_START_VM_END, vm->vm_vmid, fd,  NULL, 0);
 
 	free(diskfds);
 	free(tapfds);
