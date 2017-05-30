@@ -308,7 +308,6 @@ start_vm(struct vmd_vm *vm, int fd)
 		fatal("pledge");
 
 	if (vm->vm_received) {
-		log_info("pd: here");
 		ret = read(vm->vm_receive_fd, &vrp, sizeof(vrp));
 		// TODO: atomicio
 		if (ret != sizeof(vrp)) {
@@ -359,7 +358,7 @@ start_vm(struct vmd_vm *vm, int fd)
 	if (vm->vm_received) {
 		restore_emulated_hw(vcp, vm->vm_receive_fd, nicfds,
 		    vm->vm_disks);
-		log_debug("emulated hw restored");
+		log_debug("%s: emulated hw restored", __func__);
 		recvfp = fdopen(vm->vm_receive_fd, "r");
 
 		for (i = 0; i < vcp->vcp_nmemranges; i++) {
