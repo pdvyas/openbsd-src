@@ -538,7 +538,7 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 		vmr = &vcp->vcp_memranges[i];
 		mwrite(fd, vmr);
 	}
-	
+
 	close(fd);
 	vtp.vtp_vm_id = vcp->vcp_id;
 	if (ioctl(env->vmd_fd, VMM_IOC_TERM, &vtp) < 0) {
@@ -1134,7 +1134,7 @@ vcpu_run_loop(void *arg)
 	n = vrp->vrp_vcpu_id;
 
 	struct vm_rwregs_params vmrp;
-	vmrp.vrwp_vm_id = vcp->vcp_id;	
+	vmrp.vrwp_vm_id = vcp->vcp_id;
 	vmrp.vrwp_mask = -1;
 
 	for (;;) {
@@ -1146,7 +1146,7 @@ vcpu_run_loop(void *arg)
 			    __func__, (int)ret);
 			return ((void *)ret);
 		}
- 
+
 		/* If we are halted or paused, wait */
 		if (vcpu_hlt[n]) {
 			if (paused == 1) {
@@ -1576,10 +1576,9 @@ vcpu_assert_pic_irq(uint32_t vm_id, uint32_t vcpu_id, int irq)
 	i8259_assert_irq(irq);
 
 	if (i8259_is_pending()) {
-		ret = vcpu_pic_intr(vm_id, vcpu_id, 1);	
+		ret = vcpu_pic_intr(vm_id, vcpu_id, 1);
 		if (ret)
 			fatalx("%s: can't assert INTR: %d, %d %d", __func__, vm_id, vcpu_id, ret);
-		
 		ret = pthread_mutex_lock(&vcpu_run_mtx[vcpu_id]);
 		if (ret)
 			fatalx("%s: can't lock vcpu mtx (%d)", __func__, ret);
@@ -1588,7 +1587,6 @@ vcpu_assert_pic_irq(uint32_t vm_id, uint32_t vcpu_id, int irq)
 		ret = pthread_cond_signal(&vcpu_run_cond[vcpu_id]);
 		if (ret)
 			fatalx("%s: can't signal (%d)", __func__, ret);
-		
 		ret = pthread_mutex_unlock(&vcpu_run_mtx[vcpu_id]);
 		if (ret)
 			fatalx("%s: can't unlock vcpu mtx (%d)", __func__, ret);
