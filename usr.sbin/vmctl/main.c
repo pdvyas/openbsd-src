@@ -732,4 +732,3 @@ ctl_openconsole(const char *name)
 	execl(VMCTL_CU, VMCTL_CU, "-l", name, "-s", "9600", (char *)NULL);
 	err(1, "failed to open the console");
 }
-
