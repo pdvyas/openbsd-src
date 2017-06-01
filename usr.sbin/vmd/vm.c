@@ -60,6 +60,7 @@
 #include "i8259.h"
 #include "ns8250.h"
 #include "mc146818.h"
+#include "atomicio.h"
 
 io_fn_t ioports_map[MAX_PORTS];
 
@@ -79,7 +80,8 @@ uint8_t vcpu_exit_pci(struct vm_run_params *);
 int vcpu_pic_intr(uint32_t, uint32_t, uint8_t);
 int loadfile_bios(FILE *, struct vcpu_reg_state *);
 void send_vm(int, struct vm_create_params *);
-void mwrite(int , struct vm_mem_range *);
+void dump_vmr(int , struct vm_mem_range *);
+void restore_vmr(int , struct vm_mem_range *);
 void pause_vm(struct vm_create_params *);
 void unpause_vm(struct vm_create_params *);
 void dump_regs(struct vcpu_reg_state *);
@@ -359,11 +361,10 @@ start_vm(struct vmd_vm *vm, int fd)
 		restore_emulated_hw(vcp, vm->vm_receive_fd, nicfds,
 		    vm->vm_disks);
 		log_debug("%s: emulated hw restored", __func__);
-		recvfp = fdopen(vm->vm_receive_fd, "r");
 
 		for (i = 0; i < vcp->vcp_nmemranges; i++) {
 			vmr = &vcp->vcp_memranges[i];
-			mread(recvfp, vmr->vmr_gpa, vmr->vmr_size);
+			restore_vmr(vm->vm_receive_fd, vmr);
 		}
 	}
 
@@ -535,7 +536,7 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
-		mwrite(fd, vmr);
+		dump_vmr(fd, vmr);
 	}
 
 	close(fd);
@@ -546,7 +547,7 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 	log_info("sent vm %d successfully.", current_vm->vm_vmid);
 }
 
-void mwrite(int fd, struct vm_mem_range *vmr) {
+void dump_vmr(int fd, struct vm_mem_range *vmr) {
 	size_t rem = vmr->vmr_size, read=0;
 	int i;
 	char buf[PAGE_SIZE];
@@ -559,6 +560,22 @@ void mwrite(int fd, struct vm_mem_range *vmr) {
 		}
 		rem = rem - PAGE_SIZE;
 		read = read + PAGE_SIZE;
+	}
+}
+
+void restore_vmr(int fd, struct vm_mem_range *vmr) {
+	size_t rem = vmr->vmr_size, wrote=0;
+	int i;
+	char buf[PAGE_SIZE];
+	while (rem > 0) {
+		i = atomicio(read, fd, buf, sizeof(buf));
+		write_mem(vmr->vmr_gpa + wrote, buf, PAGE_SIZE);
+		if (i!=PAGE_SIZE) {
+			log_info("problem %d", i);
+			return;
+		}
+		rem = rem - PAGE_SIZE;
+		wrote = wrote + PAGE_SIZE;
 	}
 }
 
