@@ -81,12 +81,11 @@ int vcpu_pic_intr(uint32_t, uint32_t, uint8_t);
 int loadfile_bios(FILE *, struct vcpu_reg_state *);
 void send_vm(int, struct vm_create_params *);
 void dump_vmr(int , struct vm_mem_range *);
-void restore_vmr(int , struct vm_mem_range *);
+void dump_mem(int, struct vm_create_params *);
+void restore_vmr(int, struct vm_mem_range *);
+void restore_mem(int, struct vm_create_params *);
 void pause_vm(struct vm_create_params *);
 void unpause_vm(struct vm_create_params *);
-void dump_regs(struct vcpu_reg_state *);
-
-int hardware_initialized=0;
 
 static struct vm_mem_range *find_gpa_range(struct vm_create_params *, paddr_t,
     size_t);
@@ -270,7 +269,6 @@ start_vm(struct vmd_vm *vm, int fd)
 	FILE			*fp;
 	struct vmboot_params	 vmboot;
 	size_t			 i;
-	FILE *recvfp;
 	struct vm_rwregs_params vrp;
 	struct vm_mem_range *vmr;
 
@@ -280,7 +278,9 @@ start_vm(struct vmd_vm *vm, int fd)
 
 	if (!vm->vm_received)
 		create_memory_map(vcp);
+
 	ret = alloc_guest_mem(vcp);
+
 	if (ret) {
 		errno = ret;
 		fatal("could not allocate guest memory - exiting");
@@ -345,6 +345,9 @@ start_vm(struct vmd_vm *vm, int fd)
 		vmboot_close(fp, &vmboot);
 	}
 
+	if (vm->vm_received)
+		restore_mem(vm->vm_receive_fd, vcp);
+
 	if (vm->vm_kernel != -1)
 		close(vm->vm_kernel);
 
@@ -356,17 +359,6 @@ start_vm(struct vmd_vm *vm, int fd)
 		nicfds[i] = vm->vm_ifs[i].vif_fd;
 
 	event_init();
-
-	if (vm->vm_received) {
-		restore_emulated_hw(vcp, vm->vm_receive_fd, nicfds,
-		    vm->vm_disks);
-		log_debug("%s: emulated hw restored", __func__);
-
-		for (i = 0; i < vcp->vcp_nmemranges; i++) {
-			vmr = &vcp->vcp_memranges[i];
-			restore_vmr(vm->vm_receive_fd, vmr);
-		}
-	}
 
 	if (vmm_pipe(vm, fd, vm_dispatch_vmm) == -1)
 		fatal("setup vm pipe");
@@ -501,7 +493,6 @@ vm_shutdown(unsigned int cmd)
 void send_vm(int fd, struct vm_create_params *vcp) {
 	unsigned int i;
 	int ret;
-	struct vm_mem_range *vmr;
 	struct vm_rwregs_params vrp;
 	struct vmop_create_params *vmc;
 	struct vm_terminate_params vtp;
@@ -528,23 +519,38 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 
 	ret = write(fd, vmc, sizeof(struct vmop_create_params));
 	ret = write(fd, &vrp, sizeof(struct vm_rwregs_params));
+
+	dump_mem(fd, vcp);
+
 	i8253_dump(fd);
 	i8259_dump(fd);
 	ns8250_dump(fd);
 	mc146818_dump(fd);
 	virtio_dump(fd);
-
-	for (i = 0; i < vcp->vcp_nmemranges; i++) {
-		vmr = &vcp->vcp_memranges[i];
-		dump_vmr(fd, vmr);
-	}
-
 	close(fd);
 	vtp.vtp_vm_id = vcp->vcp_id;
 	if (ioctl(env->vmd_fd, VMM_IOC_TERM, &vtp) < 0) {
 		log_info("term IOC error: %d, %d", errno, ENOENT);
 	}
 	log_info("sent vm %d successfully.", current_vm->vm_vmid);
+}
+
+void dump_mem(int fd, struct vm_create_params *vcp) {
+	unsigned int i;
+	struct vm_mem_range *vmr;
+	for (i = 0; i < vcp->vcp_nmemranges; i++) {
+		vmr = &vcp->vcp_memranges[i];
+		dump_vmr(fd, vmr);
+	}
+}
+
+void restore_mem(int fd, struct vm_create_params *vcp) {
+	unsigned int i;
+	struct vm_mem_range *vmr;
+		for (i = 0; i < vcp->vcp_nmemranges; i++) {
+			vmr = &vcp->vcp_memranges[i];
+			restore_vmr(fd, vmr);
+		}
 }
 
 void dump_vmr(int fd, struct vm_mem_range *vmr) {
@@ -845,7 +851,6 @@ init_emulated_hw(struct vmop_create_params *vmc, int *child_disks,
 
 	/* Initialize virtio devices */
 	virtio_init(current_vm, child_disks, child_taps);
-	hardware_initialized = 1;
 }
 /*
  * restore_emulated_hw
@@ -894,7 +899,6 @@ restore_emulated_hw(struct vm_create_params *vcp, int fd, int *child_taps, int *
 	ioports_map[PCI_MODE1_DATA_REG + 3] = vcpu_exit_pci;
 	pci_init();
 	virtio_restore(fd, current_vm, child_disks, child_taps);
-	hardware_initialized = 1;
 }
 
 /*
@@ -959,8 +963,13 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
 	log_debug("%s: initializing hardware for vm %s", __func__,
 	    vcp->vcp_name);
 
-	if (!hardware_initialized) {
+	if (!current_vm->vm_received) {
 		init_emulated_hw(vmc, child_disks, child_taps);
+	} else {
+		restore_emulated_hw(vcp, current_vm->vm_receive_fd, child_disks,
+		    child_taps);
+		log_debug("%s: emulated hw restored", __func__);
+
 	}
 
 	ret = pthread_mutex_init(&threadmutex, NULL);
