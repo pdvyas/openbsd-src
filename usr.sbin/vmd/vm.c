@@ -571,12 +571,13 @@ void pause_vm(struct vm_create_params *vcp) {
 }
 
 void unpause_vm(struct vm_create_params *vcp) {
-	if (paused) {
-		paused = 0;
-		unsigned int n;
-		for (n = 0; n <= vcp->vcp_ncpus; n++) {
-			pthread_cond_broadcast(&vcpu_run_cond[n]);
-		}
+	unsigned int n;
+	if (!paused) {
+		return;
+	}
+	paused = 0;
+	for (n = 0; n <= vcp->vcp_ncpus; n++) {
+		pthread_cond_broadcast(&vcpu_run_cond[n]);
 	}
 }
 

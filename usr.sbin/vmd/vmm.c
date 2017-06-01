@@ -228,7 +228,6 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		IMSG_SIZE_CHECK(imsg, &vid);
 		memcpy(&vid, imsg->data, sizeof(vid));
 		id = vid.vid_id;
-		vm = vm_getbyvmid(id);
 		if ((vm = vm_getbyvmid(id)) == NULL) {
 			res = ENOENT;
 			cmd = IMSG_VMDOP_UNPAUSE_VM_RESPONSE;
@@ -261,7 +260,6 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		break;
 	case IMSG_VMDOP_RECEIVE_VM_END:
 		if ((vm = vm_getbyvmid(imsg->hdr.peerid)) == NULL) {
-			log_info("here");
 			res = ENOENT;
 			close(imsg->fd);
 			cmd = IMSG_VMDOP_START_VM_RESPONSE;
@@ -287,6 +285,7 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		if (id == 0)
 			id = imsg->hdr.peerid;
 	case IMSG_VMDOP_PAUSE_VM_RESPONSE:
+	case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
 	case IMSG_VMDOP_TERMINATE_VM_RESPONSE:
 		memset(&vmr, 0, sizeof(vmr));
 		vmr.vmr_result = res;
@@ -462,10 +461,10 @@ vmm_dispatch_vm(int fd, short event, void *arg)
 		case IMSG_VMDOP_VM_REBOOT:
 			vm->vm_shutdown = 0;
 			break;
-		case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
 		case IMSG_VMDOP_SEND_VM_RESPONSE:
 			vm_remove(vm);
 		case IMSG_VMDOP_PAUSE_VM_RESPONSE:
+		case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
 			proc_forward_imsg(vmm_ps, &imsg, PROC_PARENT, -1);
 			break;
 
