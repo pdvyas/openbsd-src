@@ -226,33 +226,6 @@ send_vm(uint32_t id, const char *name)
 	}
 }
 
-int
-send_vm_complete(struct imsg *imsg, int *ret)
-{
-	struct vmop_result *vmr;
-	char buf[PAGE_SIZE];
-	int readn, writen, fd;
-
-	if (imsg->hdr.type == IMSG_VMDOP_SEND_VM_RESPONSE) {
-		vmr = (struct vmop_result *)imsg->data;
-		fd = imsg->fd;
-		if (fd < 0 || vmr->vmr_result) {
-			warn("send vm command failed %d", fd);
-			*ret = EIO;
-		} else {
-			while (1) {
-			}
-			warnx("sent vm %d successfully", vmr->vmr_id);
-			*ret = 0;
-		}
-	} else {
-		warnx("unexpected response received from vmd");
-		*ret = EINVAL;
-	}
-
-	return (1);
-}
-
 void
 vm_receive(uint32_t id, const char *name)
 {
