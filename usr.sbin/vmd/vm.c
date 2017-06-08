@@ -496,7 +496,14 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 	struct vm_rwregs_params vrp;
 	struct vmop_create_params *vmc;
 	struct vm_terminate_params vtp;
+	struct vm_dump_header vmh;
 	unsigned int flags = 0;
+
+	memset(&vmh, 0, sizeof(vmh));
+	memcpy(vmh.vmh_signature, VM_DUMP_SIGNATURE, sizeof(vmh.vmh_signature));
+	vmh.vmh_version = VM_DUMP_VERSION;
+	if (atomicio(vwrite, fd, &vmh, sizeof(vmh)) != sizeof(vmh))
+		fatalx("failed to send VM dump header");
 
 	i8253_stop();
 	mc146818_stop();

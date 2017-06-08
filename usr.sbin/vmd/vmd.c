@@ -76,6 +76,7 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 	struct vmop_id			 vid;
 	struct vm_terminate_params	 vtp;
 	struct vmop_result		 vmr;
+	struct vm_dump_header		 vmh;
 	struct vmd_vm			*vm = NULL;
 	char				*str = NULL;
 	uint32_t			 id = 0;
@@ -211,6 +212,20 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 			return (-1);
 		}
 		log_debug("%s: sending fd to vmctl", __func__);
+		if (atomicio(read, imsg->fd, &vmh, sizeof(vmh)) !=
+		    sizeof(vmh)) {
+			log_warnx("%s: error reading vmh from recevied vm",
+			    __func__);
+			return (-1);
+		}
+		if (vmh.vmh_version != VM_DUMP_VERSION) {
+			log_warnx("%s: incompatible dump version",
+			    __func__);
+			res = ENOENT;
+			close(imsg->fd);
+			cmd = IMSG_VMDOP_SEND_VM_RESPONSE;
+			break;
+		}
 		if (atomicio(read, imsg->fd, &vmc, sizeof(vmc)) !=
 		    sizeof(vmc)) {
 			log_warnx("%s: error reading vmc from recevied vm",
