@@ -64,7 +64,6 @@ int get_info_vm(struct privsep *, struct imsg *, int);
 int opentap(char *);
 
 extern struct vmd *env;
-struct privsep *vmm_ps;
 
 static struct privsep_proc procs[] = {
 	{ "parent",	PROC_PARENT,	vmm_dispatch_parent  },
@@ -114,8 +113,6 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 	struct vmop_create_params vmc;
 	uint32_t		 id = 0;
 	unsigned int		 mode;
-
-	vmm_ps = ps;
 
 	switch (imsg->hdr.type) {
 	case IMSG_VMDOP_START_VM_REQUEST:
@@ -423,6 +420,7 @@ vmm_dispatch_vm(int fd, short event, void *arg)
 	struct imsgbuf		*ibuf = &iev->ibuf;
 	struct imsg		 imsg;
 	ssize_t			 n;
+	int			 i;
 
 	if (event & EV_READ) {
 		if ((n = imsg_read(ibuf)) == -1 && errno != EAGAIN)
@@ -465,7 +463,14 @@ vmm_dispatch_vm(int fd, short event, void *arg)
 			vm_remove(vm);
 		case IMSG_VMDOP_PAUSE_VM_RESPONSE:
 		case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
-			proc_forward_imsg(vmm_ps, &imsg, PROC_PARENT, -1);
+			for (i = 0; i < sizeof(procs); i++) {
+				if (procs[i].p_id == PROC_PARENT) {
+					proc_forward_imsg(procs[i].p_ps,
+							&imsg, PROC_PARENT,
+							-1);
+					break;
+				}
+			}
 			break;
 
 		default:
