@@ -145,6 +145,14 @@ struct vmop_create_params {
 	int64_t			 vmc_gid;
 };
 
+struct vm_dump_header {
+	uint8_t			 vmh_signature[12];
+#define VM_DUMP_SIGNATURE	 VMM_HV_SIGNATURE
+	uint8_t			 vmh_pad[3];
+	uint8_t			 vmh_version;
+#define VM_DUMP_VERSION		 1
+} __packed;
+
 struct vmboot_params {
 	int			 vbp_fd;
 	off_t			 vbp_partoff;
