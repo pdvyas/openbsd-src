@@ -1026,16 +1026,18 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
 			    __progname, i);
 			return (EIO);
 		}
-		vregsp.vrwp_vm_id = vcp->vcp_id;
-		vregsp.vrwp_regs = *vrs;
-		vregsp.vrwp_mask = -1;
 
 		// once more becuase reset_cpu changes regs
 		if (current_vm->vm_received) {
+			vregsp.vrwp_vm_id = vcp->vcp_id;
+			vregsp.vrwp_vcpu_id = i;
+			vregsp.vrwp_regs = *vrs;
+			// TODO: use real bitmasks and ORs here
+			vregsp.vrwp_mask = -1;
 			if (ioctl(env->vmd_fd, VMM_IOC_WRITEREGS,
 			    &vregsp) < 0) {
 				// TODO: Fix error message
-				log_info("readregs IOC error: %d, %d", errno, ENOENT);
+				log_info("writeregs IOC error: %d, %d", errno, ENOENT);
 			}
 		}
 
@@ -1165,10 +1167,6 @@ vcpu_run_loop(void *arg)
 
 	vrp->vrp_continue = 0;
 	n = vrp->vrp_vcpu_id;
-
-	struct vm_rwregs_params vmrp;
-	vmrp.vrwp_vm_id = vcp->vcp_id;
-	vmrp.vrwp_mask = -1;
 
 	for (;;) {
 
