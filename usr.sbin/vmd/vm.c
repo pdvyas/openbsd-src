@@ -520,7 +520,9 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 	for (i = 0; i < vcp->vcp_ncpus; i++) {
 		vrp.vrwp_vcpu_id = i;
 		if (ioctl(env->vmd_fd, VMM_IOC_READREGS, &vrp) < 0) {
-			log_info ("readregs IOC error: %d, %d", errno, ENOENT);
+			log_warn("%s: readregs failed", __func__);
+			close(fd);
+			return;
 		}
 	}
 
@@ -865,7 +867,8 @@ init_emulated_hw(struct vmop_create_params *vmc, int *child_disks,
  * Restores the userspace hardware emulation from fd
  */
 void
-restore_emulated_hw(struct vm_create_params *vcp, int fd, int *child_taps, int *child_disks)
+restore_emulated_hw(struct vm_create_params *vcp, int fd,
+    int *child_taps, int *child_disks)
 {
 	/* struct vm_create_params *vcp = &vmc->vmc_params; */
 	int i;
@@ -1032,12 +1035,11 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
 			vregsp.vrwp_vm_id = vcp->vcp_id;
 			vregsp.vrwp_vcpu_id = i;
 			vregsp.vrwp_regs = *vrs;
-			// TODO: use real bitmasks and ORs here
-			vregsp.vrwp_mask = -1;
-			if (ioctl(env->vmd_fd, VMM_IOC_WRITEREGS,
-			    &vregsp) < 0) {
-				// TODO: Fix error message
-				log_info("writeregs IOC error: %d, %d", errno, ENOENT);
+			vregsp.vrwp_mask = VM_RWREGS_ALL;
+			if (ret = ioctl(env->vmd_fd, VMM_IOC_WRITEREGS,
+			    &vregsp)) {
+				log_warn("%s: writeregs failed", __func__);
+				return (ret);
 			}
 		}
 
@@ -1187,9 +1189,11 @@ vcpu_run_loop(void *arg)
 					    &vcpu_run_cond[n],
 					    &vcpu_run_mtx[n]);
 					if (ret) {
-						log_warnx("%s: can't wait on cond (%d)",
+						log_warnx(
+						    "%s: can't wait on cond (%d)",
 						    __func__, (int)ret);
-						(void)pthread_mutex_unlock(&vcpu_run_mtx[n]);
+						(void)pthread_mutex_unlock(
+						    &vcpu_run_mtx[n]);
 						break;
 					}
 				}
@@ -1202,9 +1206,11 @@ vcpu_run_loop(void *arg)
 				    &vcpu_run_mtx[n]);
 
 				if (ret) {
-					log_warnx("%s: can't wait on cond (%d)",
+					log_warnx(
+					    "%s: can't wait on cond (%d)",
 					    __func__, (int)ret);
-					(void)pthread_mutex_unlock(&vcpu_run_mtx[n]);
+					(void)pthread_mutex_unlock(
+					    &vcpu_run_mtx[n]);
 					break;
 				}
 			}
