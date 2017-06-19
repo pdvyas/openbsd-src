@@ -416,11 +416,12 @@ void
 vmm_dispatch_vm(int fd, short event, void *arg)
 {
 	struct vmd_vm		*vm = arg;
+	struct vmop_result	 vmr;
 	struct imsgev		*iev = &vm->vm_iev;
 	struct imsgbuf		*ibuf = &iev->ibuf;
 	struct imsg		 imsg;
 	ssize_t			 n;
-	int			 i;
+	unsigned int		 i;
 
 	if (event & EV_READ) {
 		if ((n = imsg_read(ibuf)) == -1 && errno != EAGAIN)
@@ -460,7 +461,10 @@ vmm_dispatch_vm(int fd, short event, void *arg)
 			vm->vm_shutdown = 0;
 			break;
 		case IMSG_VMDOP_SEND_VM_RESPONSE:
-			vm_remove(vm);
+			IMSG_SIZE_CHECK(&imsg, &vmr);
+			memcpy(&vmr, imsg.data, sizeof(vmr));
+			if(!vmr.vmr_result)
+				vm_remove(vm);
 		case IMSG_VMDOP_PAUSE_VM_RESPONSE:
 		case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
 			for (i = 0; i < sizeof(procs); i++) {

@@ -189,6 +189,7 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 			if ((vm = vm_getbyname(vid.vid_name)) == NULL) {
 				res = ENOENT;
 				cmd = IMSG_VMDOP_SEND_VM_RESPONSE;
+				close(imsg->fd);
 				break;
 			} else {
 				vid.vid_id = vm->vm_vmid;
@@ -196,6 +197,7 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 		} else if ((vm = vm_getbyvmid(vid.vid_id)) == NULL) {
 			res = ENOENT;
 			cmd = IMSG_VMDOP_SEND_VM_RESPONSE;
+			close(imsg->fd);
 			break;
 		} else {
 		}
@@ -287,11 +289,26 @@ vmd_dispatch_vmm(int fd, struct privsep_proc *p, struct imsg *imsg)
 
 	switch (imsg->hdr.type) {
 	case IMSG_VMDOP_PAUSE_VM_RESPONSE:
-	case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
 		IMSG_SIZE_CHECK(imsg, &vmr);
+		memcpy(&vmr, imsg->data, sizeof(vmr));
+		if ((vm = vm_getbyvmid(vmr.vmr_id)) == NULL)
+			break;
 		proc_compose_imsg(ps, PROC_CONTROL, -1,
 		    imsg->hdr.type, imsg->hdr.peerid, -1,
 		    imsg->data, sizeof(imsg->data));
+		log_info("%s: paused vm %d successfully",
+		    vcp->vcp_name, vm->vm_vmid);
+		break;
+	case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
+		IMSG_SIZE_CHECK(imsg, &vmr);
+		memcpy(&vmr, imsg->data, sizeof(vmr));
+		if ((vm = vm_getbyvmid(vmr.vmr_id)) == NULL)
+			break;
+		proc_compose_imsg(ps, PROC_CONTROL, -1,
+		    imsg->hdr.type, imsg->hdr.peerid, -1,
+		    imsg->data, sizeof(imsg->data));
+		log_info("%s: unpaused vm %d successfully.",
+		    vcp->vcp_name, vm->vm_vmid);
 		break;
 	case IMSG_VMDOP_START_VM_RESPONSE:
 		IMSG_SIZE_CHECK(imsg, &vmr);
@@ -350,6 +367,14 @@ vmd_dispatch_vmm(int fd, struct privsep_proc *p, struct imsg *imsg)
 		}
 		break;
 	case IMSG_VMDOP_SEND_VM_RESPONSE:
+		IMSG_SIZE_CHECK(imsg, &vmr);
+		memcpy(&vmr, imsg->data, sizeof(vmr));
+		if ((vm = vm_getbyvmid(vmr.vmr_id)) == NULL)
+			break;
+		if (!vmr.vmr_result)
+			log_info("%s: sent vm %d successfully.",
+			    vm->vm_params.vmc_params.vcp_name,
+			    vm->vm_vmid);
 	case IMSG_VMDOP_TERMINATE_VM_EVENT:
 		IMSG_SIZE_CHECK(imsg, &vmr);
 		memcpy(&vmr, imsg->data, sizeof(vmr));
