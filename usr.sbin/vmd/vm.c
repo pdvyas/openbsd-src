@@ -266,7 +266,7 @@ start_vm(struct vmd_vm *vm, int fd)
 	FILE			*fp;
 	struct vmboot_params	 vmboot;
 	size_t			 i;
-	struct vm_rwregs_params vrp;
+	struct vm_rwregs_params  vrp;
 
 	/* Child */
 	setproctitle("%s", vcp->vcp_name);
@@ -373,7 +373,7 @@ void
 vm_dispatch_vmm(int fd, short event, void *arg)
 {
 	struct vmd_vm		*vm = arg;
-	struct vmop_result vmr;
+	struct vmop_result	 vmr;
 	struct imsgev		*iev = &vm->vm_iev;
 	struct imsgbuf		*ibuf = &iev->ibuf;
 	struct imsg		 imsg;
@@ -486,13 +486,13 @@ vm_shutdown(unsigned int cmd)
 int
 send_vm(int fd, struct vm_create_params *vcp)
 {
-	unsigned int i;
-	int ret;
-	struct vm_rwregs_params vrp;
+	struct vm_rwregs_params	   vrp;
 	struct vmop_create_params *vmc;
 	struct vm_terminate_params vtp;
-	struct vm_dump_header vmh;
-	unsigned int flags = 0;
+	struct vm_dump_header	   vmh;
+	unsigned int		   flags = 0;
+	unsigned int		   i;
+	int			   ret;
 
 	memset(&vmh, 0, sizeof(vmh));
 	memcpy(vmh.vmh_signature, VM_DUMP_SIGNATURE, sizeof(vmh.vmh_signature));
@@ -520,7 +520,7 @@ send_vm(int fd, struct vm_create_params *vcp)
 		if (ioctl(env->vmd_fd, VMM_IOC_READREGS, &vrp) < 0) {
 			log_warn("%s: readregs failed", __func__);
 			close(fd);
-			return;
+			return -1;
 		}
 		atomicio(vwrite, fd, &vrp, sizeof(struct vm_rwregs_params));
 	}
@@ -551,9 +551,9 @@ err:
 int
 dump_mem(int fd, struct vm_create_params *vcp)
 {
-	unsigned int i;
-	int ret;
-	struct vm_mem_range *vmr;
+	unsigned int	i;
+	int		ret;
+	struct		vm_mem_range *vmr;
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
 		ret = dump_vmr(fd, vmr);
@@ -566,19 +566,19 @@ dump_mem(int fd, struct vm_create_params *vcp)
 void
 restore_mem(int fd, struct vm_create_params *vcp)
 {
-	unsigned int i;
+	unsigned int	     i;
 	struct vm_mem_range *vmr;
-		for (i = 0; i < vcp->vcp_nmemranges; i++) {
-			vmr = &vcp->vcp_memranges[i];
-			restore_vmr(fd, vmr);
-		}
+	for (i = 0; i < vcp->vcp_nmemranges; i++) {
+		vmr = &vcp->vcp_memranges[i];
+		restore_vmr(fd, vmr);
+	}
 }
 
 int
 dump_vmr(int fd, struct vm_mem_range *vmr)
 {
-	size_t rem = vmr->vmr_size, read=0;
-	char buf[PAGE_SIZE];
+	size_t	rem = vmr->vmr_size, read=0;
+	char	buf[PAGE_SIZE];
 	while (rem > 0) {
 		if(read_mem(vmr->vmr_gpa + read, buf, PAGE_SIZE)) {
 			log_warn("failed to read vmr");
@@ -597,13 +597,12 @@ dump_vmr(int fd, struct vm_mem_range *vmr)
 void
 restore_vmr(int fd, struct vm_mem_range *vmr)
 {
-	size_t rem = vmr->vmr_size, wrote=0;
-	int i;
-	char buf[PAGE_SIZE];
+	size_t	rem = vmr->vmr_size, wrote=0;
+	char	buf[PAGE_SIZE];
 	while (rem > 0) {
 		if (atomicio(read, fd, buf, sizeof(buf)) != sizeof(buf))
 			fatal("failed to restore vmr");
-		if(write_mem(vmr->vmr_gpa + wrote, buf, PAGE_SIZE))
+		if (write_mem(vmr->vmr_gpa + wrote, buf, PAGE_SIZE))
 			fatal("failed to write vmr");
 		rem = rem - PAGE_SIZE;
 		wrote = wrote + PAGE_SIZE;
