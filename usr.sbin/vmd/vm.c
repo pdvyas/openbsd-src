@@ -862,9 +862,8 @@ init_emulated_hw(struct vmop_create_params *vmc, int *child_disks,
 
 	/* Init ns8250 UART */
 	ns8250_init(con_fd, vcp->vcp_id);
-	for (i = COM1_DATA; i <= COM1_SCR; i++) {
+	for (i = COM1_DATA; i <= COM1_SCR; i++)
 		ioports_map[i] = vcpu_exit_com;
-	}
 
 	/* Initialize PCI */
 	for (i = VMM_PCI_IO_BAR_BASE; i <= VMM_PCI_IO_BAR_END; i++)
@@ -1620,12 +1619,13 @@ void
 vcpu_assert_pic_irq(uint32_t vm_id, uint32_t vcpu_id, int irq)
 {
 	int ret;
+
 	i8259_assert_irq(irq);
 
 	if (i8259_is_pending()) {
-		ret = vcpu_pic_intr(vm_id, vcpu_id, 1);
-		if (ret)
-			fatalx("%s: can't assert INTR: %d, %d %d", __func__, vm_id, vcpu_id, ret);
+		if (vcpu_pic_intr(vm_id, vcpu_id, 1))
+			fatalx("%s: can't assert INTR", __func__);
+
 		ret = pthread_mutex_lock(&vcpu_run_mtx[vcpu_id]);
 		if (ret)
 			fatalx("%s: can't lock vcpu mtx (%d)", __func__, ret);
