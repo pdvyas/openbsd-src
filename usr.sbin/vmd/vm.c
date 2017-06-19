@@ -79,9 +79,9 @@ void vcpu_exit_inout(struct vm_run_params *);
 uint8_t vcpu_exit_pci(struct vm_run_params *);
 int vcpu_pic_intr(uint32_t, uint32_t, uint8_t);
 int loadfile_bios(FILE *, struct vcpu_reg_state *);
-void send_vm(int, struct vm_create_params *);
-void dump_vmr(int , struct vm_mem_range *);
-void dump_mem(int, struct vm_create_params *);
+int send_vm(int, struct vm_create_params *);
+int dump_vmr(int , struct vm_mem_range *);
+int dump_mem(int, struct vm_create_params *);
 void restore_vmr(int, struct vm_mem_range *);
 void restore_mem(int, struct vm_create_params *);
 void pause_vm(struct vm_create_params *);
@@ -105,10 +105,7 @@ pthread_mutex_t vcpu_run_mtx[VMM_MAX_VCPUS_PER_VM];
 uint8_t vcpu_hlt[VMM_MAX_VCPUS_PER_VM];
 uint8_t vcpu_done[VMM_MAX_VCPUS_PER_VM];
 
-pthread_mutex_t pause_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t pause_cond = PTHREAD_COND_INITIALIZER;
 int paused = 0;
-unsigned int paused_vcpus = 0;
 
 /*
  * Represents a standard register set for an OS to be booted
@@ -270,7 +267,6 @@ start_vm(struct vmd_vm *vm, int fd)
 	struct vmboot_params	 vmboot;
 	size_t			 i;
 	struct vm_rwregs_params vrp;
-	struct vm_mem_range *vmr;
 
 	/* Child */
 	setproctitle("%s", vcp->vcp_name);
@@ -311,9 +307,8 @@ start_vm(struct vmd_vm *vm, int fd)
 
 	if (vm->vm_received) {
 		ret = read(vm->vm_receive_fd, &vrp, sizeof(vrp));
-		// TODO: atomicio
 		if (ret != sizeof(vrp)) {
-			log_info("Incomplete vrp %d", ret);
+			fatal("received incomplete vrp - exiting");
 		}
 		vrs = vrp.vrwp_regs;
 	} else {
@@ -429,7 +424,6 @@ vm_dispatch_vmm(int fd, short event, void *arg)
 			vmr.vmr_result = 0;
 			vmr.vmr_id = vm->vm_vmid;
 			pause_vm(&vm->vm_params.vmc_params);
-			log_info("paused vm %d successfully.", vmr.vmr_id);
 			imsg_compose_event(&vm->vm_iev,
 			    IMSG_VMDOP_PAUSE_VM_RESPONSE,
 			    imsg.hdr.peerid, imsg.hdr.pid, -1, &vmr,
@@ -439,16 +433,15 @@ vm_dispatch_vmm(int fd, short event, void *arg)
 			vmr.vmr_result = 0;
 			vmr.vmr_id = vm->vm_vmid;
 			unpause_vm(&vm->vm_params.vmc_params);
-			log_info("unpaused vm %d successfully.", vmr.vmr_id);
 			imsg_compose_event(&vm->vm_iev,
 			    IMSG_VMDOP_UNPAUSE_VM_RESPONSE,
 			    imsg.hdr.peerid, imsg.hdr.pid, -1, &vmr,
 			    sizeof(vmr));
 			break;
 		case IMSG_VMDOP_SEND_VM_REQUEST:
-			vmr.vmr_result = 0;
 			vmr.vmr_id = vm->vm_vmid;
-			send_vm(imsg.fd, &vm->vm_params.vmc_params);
+			vmr.vmr_result = send_vm(imsg.fd,
+			    &vm->vm_params.vmc_params);
 			imsg_compose_event(&vm->vm_iev,
 			    IMSG_VMDOP_SEND_VM_RESPONSE,
 			    imsg.hdr.peerid, imsg.hdr.pid, -1, &vmr,
@@ -490,7 +483,9 @@ vm_shutdown(unsigned int cmd)
 	_exit(0);
 }
 
-void send_vm(int fd, struct vm_create_params *vcp) {
+int
+send_vm(int fd, struct vm_create_params *vcp)
+{
 	unsigned int i;
 	int ret;
 	struct vm_rwregs_params vrp;
@@ -507,6 +502,7 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 
 	i8253_stop();
 	mc146818_stop();
+
 	vmc = calloc(1, sizeof(struct vmop_create_params));
 	flags |= VMOP_CREATE_MEMORY;
 	memcpy(&vmc->vmc_params, &current_vm->vm_params, sizeof(struct
@@ -517,6 +513,8 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 	vrp.vrwp_vm_id = vcp->vcp_id;
 	vrp.vrwp_mask = -1;
 
+	atomicio(vwrite, fd, vmc, sizeof(struct vmop_create_params));
+
 	for (i = 0; i < vcp->vcp_ncpus; i++) {
 		vrp.vrwp_vcpu_id = i;
 		if (ioctl(env->vmd_fd, VMM_IOC_READREGS, &vrp) < 0) {
@@ -524,36 +522,50 @@ void send_vm(int fd, struct vm_create_params *vcp) {
 			close(fd);
 			return;
 		}
+		atomicio(vwrite, fd, &vrp, sizeof(struct vm_rwregs_params));
 	}
 
-	ret = write(fd, vmc, sizeof(struct vmop_create_params));
-	ret = write(fd, &vrp, sizeof(struct vm_rwregs_params));
+	if ((ret = dump_mem(fd, vcp)))
+		goto err;
+	if ((ret = i8253_dump(fd)))
+		goto err;
+	if ((ret = i8259_dump(fd)))
+		goto err;
+	if ((ret = ns8250_dump(fd)))
+		goto err;
+	if ((ret = mc146818_dump(fd)))
+		goto err;
+	if ((ret = virtio_dump(fd)))
+		goto err;
 
-	dump_mem(fd, vcp);
-
-	i8253_dump(fd);
-	i8259_dump(fd);
-	ns8250_dump(fd);
-	mc146818_dump(fd);
-	virtio_dump(fd);
-	close(fd);
 	vtp.vtp_vm_id = vcp->vcp_id;
 	if (ioctl(env->vmd_fd, VMM_IOC_TERM, &vtp) < 0) {
-		log_info("term IOC error: %d, %d", errno, ENOENT);
+		log_warnx("%s: term IOC error: %d, %d", __func__,
+		    errno, ENOENT);
 	}
-	log_info("sent vm %d successfully.", current_vm->vm_vmid);
+err:
+	close(fd);
+	return ret;
 }
 
-void dump_mem(int fd, struct vm_create_params *vcp) {
+int
+dump_mem(int fd, struct vm_create_params *vcp)
+{
 	unsigned int i;
+	int ret;
 	struct vm_mem_range *vmr;
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
-		dump_vmr(fd, vmr);
+		ret = dump_vmr(fd, vmr);
+		if (ret)
+			return ret;
 	}
+	return (0);
 }
 
-void restore_mem(int fd, struct vm_create_params *vcp) {
+void
+restore_mem(int fd, struct vm_create_params *vcp)
+{
 	unsigned int i;
 	struct vm_mem_range *vmr;
 		for (i = 0; i < vcp->vcp_nmemranges; i++) {
@@ -562,55 +574,62 @@ void restore_mem(int fd, struct vm_create_params *vcp) {
 		}
 }
 
-void dump_vmr(int fd, struct vm_mem_range *vmr) {
+int
+dump_vmr(int fd, struct vm_mem_range *vmr)
+{
 	size_t rem = vmr->vmr_size, read=0;
-	int i;
 	char buf[PAGE_SIZE];
 	while (rem > 0) {
-		i = read_mem(vmr->vmr_gpa + read, buf, PAGE_SIZE);
-		i = write(fd, buf, PAGE_SIZE);
-		if (i!=PAGE_SIZE) {
-			log_info("problem %d", i);
-			return;
+		if(read_mem(vmr->vmr_gpa + read, buf, PAGE_SIZE)) {
+			log_warn("failed to read vmr");
+			return (-1);
+		}
+		if (atomicio(vwrite, fd, buf, sizeof(buf)) != sizeof(buf)) {
+			log_warn("failed to dump vmr");
+			return (-1);
 		}
 		rem = rem - PAGE_SIZE;
 		read = read + PAGE_SIZE;
 	}
+	return (0);
 }
 
-void restore_vmr(int fd, struct vm_mem_range *vmr) {
+void
+restore_vmr(int fd, struct vm_mem_range *vmr)
+{
 	size_t rem = vmr->vmr_size, wrote=0;
 	int i;
 	char buf[PAGE_SIZE];
 	while (rem > 0) {
-		i = atomicio(read, fd, buf, sizeof(buf));
-		write_mem(vmr->vmr_gpa + wrote, buf, PAGE_SIZE);
-		if (i!=PAGE_SIZE) {
-			log_info("problem %d", i);
-			return;
-		}
+		if (atomicio(read, fd, buf, sizeof(buf)) != sizeof(buf))
+			fatal("failed to restore vmr");
+		if(write_mem(vmr->vmr_gpa + wrote, buf, PAGE_SIZE))
+			fatal("failed to write vmr");
 		rem = rem - PAGE_SIZE;
 		wrote = wrote + PAGE_SIZE;
 	}
 }
 
-void pause_vm(struct vm_create_params *vcp) {
+void
+pause_vm(struct vm_create_params *vcp)
+{
 	if (paused == 0) {
-		paused_vcpus = 0;
 		paused = 1;
 		return;
 	}
 }
 
-void unpause_vm(struct vm_create_params *vcp) {
+void
+unpause_vm(struct vm_create_params *vcp)
+{
 	unsigned int n;
-	if (!paused) {
+	if (!paused)
 		return;
-	}
+
 	paused = 0;
-	for (n = 0; n <= vcp->vcp_ncpus; n++) {
+
+	for (n = 0; n <= vcp->vcp_ncpus; n++)
 		pthread_cond_broadcast(&vcpu_run_cond[n]);
-	}
 }
 
 /*
@@ -1030,14 +1049,14 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
 			return (EIO);
 		}
 
-		// once more becuase reset_cpu changes regs
+		/* once more becuase reset_cpu changes regs */
 		if (current_vm->vm_received) {
 			vregsp.vrwp_vm_id = vcp->vcp_id;
 			vregsp.vrwp_vcpu_id = i;
 			vregsp.vrwp_regs = *vrs;
 			vregsp.vrwp_mask = VM_RWREGS_ALL;
-			if (ret = ioctl(env->vmd_fd, VMM_IOC_WRITEREGS,
-			    &vregsp)) {
+			if ((ret = ioctl(env->vmd_fd, VMM_IOC_WRITEREGS,
+			    &vregsp)) < 0) {
 				log_warn("%s: writeregs failed", __func__);
 				return (ret);
 			}
@@ -1165,7 +1184,6 @@ vcpu_run_loop(void *arg)
 	intptr_t ret = 0;
 	int irq;
 	uint32_t n;
-	struct vm_create_params	*vcp = &current_vm->vm_params.vmc_params;
 
 	vrp->vrp_continue = 0;
 	n = vrp->vrp_vcpu_id;
@@ -1182,24 +1200,17 @@ vcpu_run_loop(void *arg)
 
 		/* If we are halted or paused, wait */
 		if (vcpu_hlt[n]) {
-			if (paused == 1) {
-				paused_vcpus += 1;
-				while (paused) {
-					ret = pthread_cond_wait(
-					    &vcpu_run_cond[n],
+			while (paused == 1) {
+				ret = pthread_cond_wait(&vcpu_run_cond[n],
+				    &vcpu_run_mtx[n]);
+				if (ret) {
+					log_warnx(
+					    "%s: can't wait on cond (%d)",
+					    __func__, (int)ret);
+					(void)pthread_mutex_unlock(
 					    &vcpu_run_mtx[n]);
-					if (ret) {
-						log_warnx(
-						    "%s: can't wait on cond (%d)",
-						    __func__, (int)ret);
-						(void)pthread_mutex_unlock(
-						    &vcpu_run_mtx[n]);
-						break;
-					}
+					break;
 				}
-			}
-			if (paused_vcpus > 0) {
-				paused_vcpus -= 1;
 			}
 			if (vcpu_hlt[n]) {
 				ret = pthread_cond_wait(&vcpu_run_cond[n],
@@ -1245,7 +1256,6 @@ vcpu_run_loop(void *arg)
 		if (ioctl(env->vmd_fd, VMM_IOC_RUN, vrp) < 0) {
 			/* If run ioctl failed, exit */
 			ret = errno;
-			log_info("vrp DEBUG %d", vrp->vrp_exit_reason);
 			log_warn("%s: vm %d / vcpu %d run ioctl failed",
 			    __func__, vrp->vrp_vm_id, n);
 			break;
