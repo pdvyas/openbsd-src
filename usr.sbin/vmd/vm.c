@@ -1356,9 +1356,8 @@ vcpu_exit_inout(struct vm_run_params *vrp)
 	union vm_exit *vei = vrp->vrp_exit;
 	uint8_t intr = 0xFF;
 
-	if (ioports_map[vei->vei.vei_port] != NULL) {
+	if (ioports_map[vei->vei.vei_port] != NULL)
 		intr = ioports_map[vei->vei.vei_port](vrp);
-	}
 	else if (vei->vei.vei_dir == VEI_DIR_IN)
 		set_return_data(vei, 0xFFFFFFFF);
 
