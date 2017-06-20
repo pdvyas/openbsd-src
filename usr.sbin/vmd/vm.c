@@ -509,7 +509,7 @@ send_vm(int fd, struct vm_create_params *vcp)
 	pause_vm(vcp);
 	sleep(1);
 	vrp.vrwp_vm_id = vcp->vcp_id;
-	vrp.vrwp_mask = -1;
+	vrp.vrwp_mask = VM_RWREGS_ALL;
 
 	atomicio(vwrite, fd, vmc, sizeof(struct vmop_create_params));
 
