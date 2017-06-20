@@ -105,8 +105,6 @@ pthread_mutex_t vcpu_run_mtx[VMM_MAX_VCPUS_PER_VM];
 uint8_t vcpu_hlt[VMM_MAX_VCPUS_PER_VM];
 uint8_t vcpu_done[VMM_MAX_VCPUS_PER_VM];
 
-int paused = 0;
-
 /*
  * Represents a standard register set for an OS to be booted
  * as a flat 32 bit address space, before paging is enabled.
@@ -612,8 +610,8 @@ restore_vmr(int fd, struct vm_mem_range *vmr)
 void
 pause_vm(struct vm_create_params *vcp)
 {
-	if (paused == 0) {
-		paused = 1;
+	if (current_vm->vm_paused == 0) {
+		current_vm->vm_paused = 1;
 		return;
 	}
 }
@@ -622,10 +620,10 @@ void
 unpause_vm(struct vm_create_params *vcp)
 {
 	unsigned int n;
-	if (!paused)
+	if (!current_vm->vm_paused)
 		return;
 
-	paused = 0;
+	current_vm->vm_paused = 0;
 
 	for (n = 0; n <= vcp->vcp_ncpus; n++)
 		pthread_cond_broadcast(&vcpu_run_cond[n]);
@@ -1198,7 +1196,7 @@ vcpu_run_loop(void *arg)
 
 		/* If we are halted or paused, wait */
 		if (vcpu_hlt[n]) {
-			while (paused == 1) {
+			while (current_vm->vm_paused == 1) {
 				ret = pthread_cond_wait(&vcpu_run_cond[n],
 				    &vcpu_run_mtx[n]);
 				if (ret) {

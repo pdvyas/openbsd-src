@@ -207,6 +207,7 @@ struct vmd_vm {
 	int			 vm_shutdown;
 	uid_t			 vm_uid;
 	int			 vm_received;
+	int			 vm_paused;
 	int			 vm_receive_fd;
 
 	TAILQ_ENTRY(vmd_vm)	 vm_entry;
