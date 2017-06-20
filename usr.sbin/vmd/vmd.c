@@ -303,7 +303,8 @@ vmd_dispatch_vmm(int fd, struct privsep_proc *p, struct imsg *imsg)
 		    imsg->hdr.type, imsg->hdr.peerid, -1,
 		    imsg->data, sizeof(imsg->data));
 		log_info("%s: paused vm %d successfully",
-		    vcp->vcp_name, vm->vm_vmid);
+		    vm->vm_params.vmc_params.vcp_name,
+		    vm->vm_vmid);
 		break;
 	case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
 		IMSG_SIZE_CHECK(imsg, &vmr);
@@ -314,7 +315,8 @@ vmd_dispatch_vmm(int fd, struct privsep_proc *p, struct imsg *imsg)
 		    imsg->hdr.type, imsg->hdr.peerid, -1,
 		    imsg->data, sizeof(imsg->data));
 		log_info("%s: unpaused vm %d successfully.",
-		    vcp->vcp_name, vm->vm_vmid);
+		    vm->vm_params.vmc_params.vcp_name,
+		    vm->vm_vmid);
 		break;
 	case IMSG_VMDOP_START_VM_RESPONSE:
 		IMSG_SIZE_CHECK(imsg, &vmr);
