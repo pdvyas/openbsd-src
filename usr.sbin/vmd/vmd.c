@@ -996,6 +996,7 @@ vm_register(struct privsep *ps, struct vmop_create_params *vmc,
 	vm->vm_pid = -1;
 	vm->vm_tty = -1;
 	vm->vm_receive_fd = -1;
+	vm->vm_paused = 0;
 
 	for (i = 0; i < vcp->vcp_ndisks; i++)
 		vm->vm_disks[i] = -1;
