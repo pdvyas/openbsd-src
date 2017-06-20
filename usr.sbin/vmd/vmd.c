@@ -213,12 +213,14 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 			log_warnx("%s: invalid fd", __func__);
 			return (-1);
 		}
-		log_debug("%s: sending fd to vmctl", __func__);
 		if (atomicio(read, imsg->fd, &vmh, sizeof(vmh)) !=
 		    sizeof(vmh)) {
 			log_warnx("%s: error reading vmh from recevied vm",
 			    __func__);
-			return (-1);
+			res = EIO;
+			close(imsg->fd);
+			cmd = IMSG_VMDOP_START_VM_RESPONSE;
+			break;
 		}
 		if (vmh.vmh_version != VM_DUMP_VERSION) {
 			log_warnx("%s: incompatible dump version",
@@ -232,7 +234,10 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 		    sizeof(vmc)) {
 			log_warnx("%s: error reading vmc from recevied vm",
 			    __func__);
-			return (-1);
+			res = EIO;
+			close(imsg->fd);
+			cmd = IMSG_VMDOP_START_VM_RESPONSE;
+			break;
 		}
 		strlcpy(vmc.vmc_params.vcp_name, vid.vid_name,
 		    sizeof(vmc.vmc_params.vcp_name));
@@ -246,6 +251,7 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 		} else {
 			vm->vm_received = 1;
 			config_setvm(ps, vm, imsg->hdr.peerid, vmc.vmc_uid);
+			log_debug("%s: sending fd to vmctl", __func__);
 			proc_compose_imsg(ps, PROC_VMM, -1,
 			    IMSG_VMDOP_RECEIVE_VM_END, vm->vm_vmid, imsg->fd,
 			    NULL, 0);

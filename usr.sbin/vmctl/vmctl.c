@@ -245,8 +245,10 @@ vm_receive(uint32_t id, const char *name)
 		imsg_flush(ibuf);
 		while (1) {
 			readn = atomicio(read, STDIN_FILENO, buf, sizeof(buf));
-			if (!readn)
+			if (!readn) {
+				close(fds[1]);
 				break;
+			}
 			writen = atomicio(vwrite, fds[1], buf, readn);
 			if (writen != readn)
 				break;
