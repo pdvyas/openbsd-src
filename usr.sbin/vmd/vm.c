@@ -338,9 +338,6 @@ start_vm(struct vmd_vm *vm, int fd)
 		vmboot_close(fp, &vmboot);
 	}
 
-	if (vm->vm_received)
-		restore_mem(vm->vm_receive_fd, vcp);
-
 	if (vm->vm_kernel != -1)
 		close(vm->vm_kernel);
 
@@ -352,6 +349,12 @@ start_vm(struct vmd_vm *vm, int fd)
 		nicfds[i] = vm->vm_ifs[i].vif_fd;
 
 	event_init();
+
+	if (vm->vm_received) {
+		restore_emulated_hw(vcp, vm->vm_receive_fd, nicfds,
+		    vm->vm_disks);
+		restore_mem(vm->vm_receive_fd, vcp);
+	}
 
 	if (vmm_pipe(vm, fd, vm_dispatch_vmm) == -1)
 		fatal("setup vm pipe");
@@ -523,8 +526,6 @@ send_vm(int fd, struct vm_create_params *vcp)
 		atomicio(vwrite, fd, &vrp, sizeof(struct vm_rwregs_params));
 	}
 
-	if ((ret = dump_mem(fd, vcp)))
-		goto err;
 	if ((ret = i8253_dump(fd)))
 		goto err;
 	if ((ret = i8259_dump(fd)))
@@ -534,6 +535,8 @@ send_vm(int fd, struct vm_create_params *vcp)
 	if ((ret = mc146818_dump(fd)))
 		goto err;
 	if ((ret = virtio_dump(fd)))
+		goto err;
+	if ((ret = dump_mem(fd, vcp)))
 		goto err;
 
 	vtp.vtp_vm_id = vcp->vcp_id;
@@ -988,14 +991,8 @@ run_vm(int *child_disks, int *child_taps, struct vmop_create_params *vmc,
 	log_debug("%s: initializing hardware for vm %s", __func__,
 	    vcp->vcp_name);
 
-	if (!current_vm->vm_received) {
+	if (!current_vm->vm_received)
 		init_emulated_hw(vmc, child_disks, child_taps);
-	} else {
-		restore_emulated_hw(vcp, current_vm->vm_receive_fd, child_disks,
-		    child_taps);
-		log_debug("%s: emulated hw restored", __func__);
-
-	}
 
 	ret = pthread_mutex_init(&threadmutex, NULL);
 	if (ret) {
