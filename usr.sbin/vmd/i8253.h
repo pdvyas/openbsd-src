@@ -49,3 +49,4 @@ int i8253_restore(int, uint32_t);
 uint8_t vcpu_exit_i8253(struct vm_run_params *);
 void i8253_do_readback(uint32_t);
 void i8253_stop(void);
+void i8253_start(void);

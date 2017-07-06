@@ -21,3 +21,4 @@ void dump_mc146818(void);
 int mc146818_dump(int);
 int mc146818_restore(int, uint32_t);
 void mc146818_stop(void);
+void mc146818_start(void);
