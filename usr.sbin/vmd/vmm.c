@@ -105,7 +105,7 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 	int			 res = 0, cmd = 0, verbose;
 	struct vmd_vm		*vm = NULL;
 	struct vm_terminate_params vtp;
-	struct vmop_id vid;
+	struct vmop_id		 vid;
 	struct vmop_result	 vmr;
 	uint32_t		 id = 0;
 	unsigned int		 mode;
