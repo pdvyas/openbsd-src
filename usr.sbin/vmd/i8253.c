@@ -382,9 +382,8 @@ void
 i8253_stop()
 {
 	int i;
-	for (i = 0; i < 3; i++) {
+	for (i = 0; i < 3; i++)
 		evtimer_del(&i8253_channel[i].timer);
-	}
 }
 
 void
