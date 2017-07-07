@@ -451,10 +451,17 @@ vm_shutdown(unsigned int cmd)
 void
 pause_vm(struct vm_create_params *vcp)
 {
-	if (current_vm->vm_paused == 0) {
-		current_vm->vm_paused = 1;
+	if (current_vm->vm_paused)
 		return;
-	}
+
+	current_vm->vm_paused = 1;
+
+	/* XXX: vcpu_run_loop is running in another thread and we have to wait
+	 * for the vm to exit before returning */
+	sleep(1);
+
+	i8253_stop();
+	mc146818_stop();
 }
 
 void
@@ -466,6 +473,8 @@ unpause_vm(struct vm_create_params *vcp)
 
 	current_vm->vm_paused = 0;
 
+	i8253_start();
+	mc146818_start();
 	for (n = 0; n <= vcp->vcp_ncpus; n++)
 		pthread_cond_broadcast(&vcpu_run_cond[n]);
 }
