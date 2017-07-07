@@ -349,7 +349,6 @@ mc146818_stop()
 {
 	evtimer_del(&rtc.per);
 	evtimer_del(&rtc.sec);
-	log_info("here: stopped");
 }
 
 void
@@ -357,5 +356,4 @@ mc146818_start()
 {
 	evtimer_add(&rtc.per, &rtc.per_tv);
 	evtimer_add(&rtc.sec, &rtc.sec_tv);
-	log_info("here: started");
 }

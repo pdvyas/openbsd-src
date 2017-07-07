@@ -39,6 +39,7 @@ struct i8253_channel {
 	uint8_t rbs;		/* channel is in readback status mode */
 	struct event timer;	/* timer event for this counter */
 	uint32_t vm_id;		/* owning VM id */
+	int in_use;		/* denotes if this counter was ever used */
 };
 
 void i8253_init(uint32_t);

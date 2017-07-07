@@ -313,8 +313,8 @@ i8253_reset(uint8_t chn)
 
 	evtimer_del(&i8253_channel[chn].timer);
 	timerclear(&tv);
-	log_info("here: resetting %d", chn);
 
+	i8253_channel[chn].in_use = 1;
 	tv.tv_usec = (i8253_channel[chn].start * NS_PER_TICK) / 1000;
 	evtimer_add(&i8253_channel[chn].timer, &tv);
 }
@@ -383,8 +383,6 @@ i8253_stop()
 {
 	int i;
 	for (i = 0; i < 3; i++) {
-		/* log_info("here: %d pending? %d", i, evtimer_pending(&i8253_channel[i].timer, &i8253_channel[i])); */
-		log_info("here: %d start? %d", i, &i8253_channel[i].start);
 		evtimer_del(&i8253_channel[i].timer);
 	}
 }
@@ -394,5 +392,6 @@ i8253_start()
 {
 	int i;
 	for (i = 0; i < 3; i++)
-		i8253_reset(i);
+		if(i8253_channel[i].in_use)
+			i8253_reset(i);
 }
