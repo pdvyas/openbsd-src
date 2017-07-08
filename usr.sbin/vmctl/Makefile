@@ -2,8 +2,10 @@
 
 .if ${MACHINE} == "amd64" || ${MACHINE} == "i386"
 
+.PATH:	${.CURDIR}/../vmd
+
 PROG=	vmctl
-SRCS=	vmctl.c main.c
+SRCS=	vmctl.c main.c atomicio.c
 CFLAGS+= -Wall
 CFLAGS+= -Wstrict-prototypes -Wmissing-prototypes
 CFLAGS+= -Wmissing-declarations
@@ -12,6 +14,7 @@ CFLAGS+= -Wsign-compare
 CFLAGS+= -I${.CURDIR} -I${.CURDIR}/../vmd
 LDADD+=	-lutil
 DPADD+= ${LIBUTIL}
+PATH+=../vmd
 
 .else
 
