@@ -223,7 +223,10 @@ send_vm(uint32_t id, const char *name)
 			if (writen != readn)
 				break;
 		}
-		warnx("sent vm %d successfully", vid.vid_id);
+		if (vid.vid_id)
+			warnx("sent vm %d successfully", vid.vid_id);
+		else
+			warnx("sent vm %s successfully", vid.vid_name);
 	}
 }
 
