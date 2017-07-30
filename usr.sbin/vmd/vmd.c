@@ -39,6 +39,8 @@
 #include <pwd.h>
 #include <grp.h>
 
+#include <machine/specialreg.h>
+
 #include "proc.h"
 #include "atomicio.h"
 #include "vmd.h"
@@ -65,6 +67,102 @@ static struct privsep_proc procs[] = {
 /* For the privileged process */
 static struct privsep_proc *proc_priv = &procs[0];
 static struct passwd proc_privpw;
+
+int
+check_vmh(struct vm_dump_header *vmh) {
+	int i, index;
+	unsigned int code, leaf;
+	unsigned int a, b, c, d;
+
+
+	if (vmh->vmh_version != VM_DUMP_VERSION) {
+		log_warnx("%s: incompatible dump version", __func__);
+		return (-1);
+	}
+
+	index = 0;
+	code = vmh->vmh_cpuids[index].code;
+	leaf = vmh->vmh_cpuids[index].leaf;
+	if (code == 0x00 && leaf == 0x00) {
+		CPUID_LEAF(code, leaf, a, b, c, d);
+		if (vmh->vmh_cpuids[index].a != a) {
+			log_debug("%s: incompatible cpuid level", __func__);
+			return (-1);
+		}
+		if (!(vmh->vmh_cpuids[index].b == b &&
+		    vmh->vmh_cpuids[index].c == c &&
+		    vmh->vmh_cpuids[index].d == d)) {
+			log_debug("%s: incompatible cpu brand", __func__);
+			return (-1);
+		}
+	}
+
+	index = 1;
+	code = vmh->vmh_cpuids[index].code;
+	leaf = vmh->vmh_cpuids[index].leaf;
+	if (code == 0x01 && leaf == 0x00) {
+		CPUID_LEAF(code, leaf, a, b, c, d);
+		if (vmh->vmh_cpuids[index].c & c != vmh->vmh_cpuids[index].c) {
+			log_debug("%s: incompatible cpu features", __func__);
+			return (-1);
+		}
+		if (vmh->vmh_cpuids[index].d & d != vmh->vmh_cpuids[index].d) {
+			log_debug("%s: incompatible cpu features", __func__);
+			return (-1);
+		}
+	}
+
+	index = 2;
+	code = vmh->vmh_cpuids[index].code;
+	leaf = vmh->vmh_cpuids[index].leaf;
+	if (code == 0x07 && leaf == 0x00) {
+		CPUID_LEAF(code, leaf, a, b, c, d);
+		if (vmh->vmh_cpuids[index].b & b != vmh->vmh_cpuids[index].b) {
+			log_debug("%s: incompatible cpu features", __func__);
+			return (-1);
+		}
+		if (vmh->vmh_cpuids[index].c & c != vmh->vmh_cpuids[index].c) {
+			log_debug("%s: incompatible cpu features", __func__);
+			return (-1);
+		}
+	}
+
+	index = 3;
+	code = vmh->vmh_cpuids[index].code;
+	leaf = vmh->vmh_cpuids[index].leaf;
+	if (code == 0x0d && leaf == 0x00) {
+		CPUID_LEAF(code, leaf, a, b, c, d);
+		if (vmh->vmh_cpuids[index].b & b != vmh->vmh_cpuids[index].b) {
+			log_debug("%s: incompatible cpu features", __func__);
+			return (-1);
+		}
+		if (vmh->vmh_cpuids[index].c & c != vmh->vmh_cpuids[index].c) {
+			log_debug("%s: incompatible cpu features", __func__);
+			return (-1);
+		}
+	}
+
+	index = 4;
+	code = vmh->vmh_cpuids[index].code;
+	leaf = vmh->vmh_cpuids[index].leaf;
+	if (code == 0x80000001 && leaf == 0x00) {
+		CPUID_LEAF(code, leaf, a, b, c, d);
+		if (vmh->vmh_cpuids[index].a & a != vmh->vmh_cpuids[index].a) {
+			log_debug("%s: incompatible cpu features", __func__);
+			return (-1);
+		}
+		if (vmh->vmh_cpuids[index].c & c != vmh->vmh_cpuids[index].c) {
+			log_debug("%s: incompatible cpu features", __func__);
+			return (-1);
+		}
+		if (vmh->vmh_cpuids[index].d & d != vmh->vmh_cpuids[index].d) {
+			log_debug("%s: incompatible cpu features", __func__);
+			return (-1);
+		}
+	}
+
+	return (0);
+}
 
 int
 vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
@@ -222,9 +320,7 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 			cmd = IMSG_VMDOP_START_VM_RESPONSE;
 			break;
 		}
-		if (vmh.vmh_version != VM_DUMP_VERSION) {
-			log_warnx("%s: incompatible dump version",
-			    __func__);
+		if(check_vmh(&vmh)) {
 			res = ENOENT;
 			close(imsg->fd);
 			cmd = IMSG_VMDOP_SEND_VM_RESPONSE;

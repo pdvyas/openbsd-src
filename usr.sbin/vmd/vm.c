@@ -483,22 +483,52 @@ vm_shutdown(unsigned int cmd)
 	_exit(0);
 }
 
+int dump_send_header(int fd) {
+	struct vm_dump_header	   vmh;
+	int			   i;
+
+	vmh.vmh_cpuids[0].code = 0x00;
+	vmh.vmh_cpuids[0].leaf = 0x00;
+
+	vmh.vmh_cpuids[1].code = 0x01;
+	vmh.vmh_cpuids[1].leaf = 0x00;
+
+	vmh.vmh_cpuids[2].code = 0x07;
+	vmh.vmh_cpuids[2].leaf = 0x00;
+
+	vmh.vmh_cpuids[3].code = 0x0d;
+	vmh.vmh_cpuids[3].leaf = 0x00;
+
+	vmh.vmh_cpuids[4].code = 0x80000001;
+	vmh.vmh_cpuids[4].leaf = 0x00;
+
+	vmh.vmh_version = VM_DUMP_VERSION;
+
+	for (i=0; i < VM_DUMP_HEADER_CPUID_COUNT; i++) {
+		CPUID_LEAF(vmh.vmh_cpuids[i].code,
+		    vmh.vmh_cpuids[i].leaf,
+		    vmh.vmh_cpuids[i].a,
+		    vmh.vmh_cpuids[i].b,
+		    vmh.vmh_cpuids[i].c,
+		    vmh.vmh_cpuids[i].d);
+	}
+
+	if (atomicio(vwrite, fd, &vmh, sizeof(vmh)) != sizeof(vmh)) return (-1);
+	return (0);
+}
+
 int
 send_vm(int fd, struct vm_create_params *vcp)
 {
 	struct vm_rwregs_params	   vrp;
 	struct vmop_create_params *vmc;
 	struct vm_terminate_params vtp;
-	struct vm_dump_header	   vmh;
 	unsigned int		   flags = 0;
 	unsigned int		   i;
 	int			   ret = 0;
 
-	memset(&vmh, 0, sizeof(vmh));
-	memcpy(vmh.vmh_signature, VM_DUMP_SIGNATURE, sizeof(vmh.vmh_signature));
-	vmh.vmh_version = VM_DUMP_VERSION;
-	if (atomicio(vwrite, fd, &vmh, sizeof(vmh)) != sizeof(vmh)) {
-		log_warn("%s: failed to send vm dump header", __func__);
+	if (dump_send_header(fd)) {
+		log_info("%s: failed to send vm dump header", __func__);
 		goto err;
 	}
 
