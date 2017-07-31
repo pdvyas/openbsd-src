@@ -102,11 +102,11 @@ check_vmh(struct vm_dump_header *vmh) {
 	leaf = vmh->vmh_cpuids[index].leaf;
 	if (code == 0x01 && leaf == 0x00) {
 		CPUID_LEAF(code, leaf, a, b, c, d);
-		if (vmh->vmh_cpuids[index].c & c != vmh->vmh_cpuids[index].c) {
+		if ((vmh->vmh_cpuids[index].c & c) != vmh->vmh_cpuids[index].c) {
 			log_debug("%s: incompatible cpu features", __func__);
 			return (-1);
 		}
-		if (vmh->vmh_cpuids[index].d & d != vmh->vmh_cpuids[index].d) {
+		if ((vmh->vmh_cpuids[index].d & d) != vmh->vmh_cpuids[index].d) {
 			log_debug("%s: incompatible cpu features", __func__);
 			return (-1);
 		}
@@ -117,11 +117,11 @@ check_vmh(struct vm_dump_header *vmh) {
 	leaf = vmh->vmh_cpuids[index].leaf;
 	if (code == 0x07 && leaf == 0x00) {
 		CPUID_LEAF(code, leaf, a, b, c, d);
-		if (vmh->vmh_cpuids[index].b & b != vmh->vmh_cpuids[index].b) {
+		if ((vmh->vmh_cpuids[index].b & b) != vmh->vmh_cpuids[index].b) {
 			log_debug("%s: incompatible cpu features", __func__);
 			return (-1);
 		}
-		if (vmh->vmh_cpuids[index].c & c != vmh->vmh_cpuids[index].c) {
+		if ((vmh->vmh_cpuids[index].c & c) != vmh->vmh_cpuids[index].c) {
 			log_debug("%s: incompatible cpu features", __func__);
 			return (-1);
 		}
@@ -132,11 +132,11 @@ check_vmh(struct vm_dump_header *vmh) {
 	leaf = vmh->vmh_cpuids[index].leaf;
 	if (code == 0x0d && leaf == 0x00) {
 		CPUID_LEAF(code, leaf, a, b, c, d);
-		if (vmh->vmh_cpuids[index].b & b != vmh->vmh_cpuids[index].b) {
+		if ((vmh->vmh_cpuids[index].b & b) != vmh->vmh_cpuids[index].b) {
 			log_debug("%s: incompatible cpu features", __func__);
 			return (-1);
 		}
-		if (vmh->vmh_cpuids[index].c & c != vmh->vmh_cpuids[index].c) {
+		if ((vmh->vmh_cpuids[index].c & c) != vmh->vmh_cpuids[index].c) {
 			log_debug("%s: incompatible cpu features", __func__);
 			return (-1);
 		}
@@ -147,15 +147,15 @@ check_vmh(struct vm_dump_header *vmh) {
 	leaf = vmh->vmh_cpuids[index].leaf;
 	if (code == 0x80000001 && leaf == 0x00) {
 		CPUID_LEAF(code, leaf, a, b, c, d);
-		if (vmh->vmh_cpuids[index].a & a != vmh->vmh_cpuids[index].a) {
+		if ((vmh->vmh_cpuids[index].a & a) != vmh->vmh_cpuids[index].a) {
 			log_debug("%s: incompatible cpu features", __func__);
 			return (-1);
 		}
-		if (vmh->vmh_cpuids[index].c & c != vmh->vmh_cpuids[index].c) {
+		if ((vmh->vmh_cpuids[index].c & c) != vmh->vmh_cpuids[index].c) {
 			log_debug("%s: incompatible cpu features", __func__);
 			return (-1);
 		}
-		if (vmh->vmh_cpuids[index].d & d != vmh->vmh_cpuids[index].d) {
+		if ((vmh->vmh_cpuids[index].d & d) != vmh->vmh_cpuids[index].d) {
 			log_debug("%s: incompatible cpu features", __func__);
 			return (-1);
 		}
