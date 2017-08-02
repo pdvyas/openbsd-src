@@ -40,6 +40,7 @@
 #include <grp.h>
 
 #include <machine/specialreg.h>
+#include <machine/vmmvar.h>
 
 #include "proc.h"
 #include "atomicio.h"
@@ -70,7 +71,7 @@ static struct passwd proc_privpw;
 
 int
 check_vmh(struct vm_dump_header *vmh) {
-	int i, index;
+	int index;
 	unsigned int code, leaf;
 	unsigned int a, b, c, d;
 
@@ -85,7 +86,7 @@ check_vmh(struct vm_dump_header *vmh) {
 	leaf = vmh->vmh_cpuids[index].leaf;
 	if (code == 0x00 && leaf == 0x00) {
 		CPUID_LEAF(code, leaf, a, b, c, d);
-		if (vmh->vmh_cpuids[index].a != a) {
+		if (vmh->vmh_cpuids[index].a > a) {
 			log_debug("%s: incompatible cpuid level", __func__);
 			return (-1);
 		}
@@ -102,12 +103,12 @@ check_vmh(struct vm_dump_header *vmh) {
 	leaf = vmh->vmh_cpuids[index].leaf;
 	if (code == 0x01 && leaf == 0x00) {
 		CPUID_LEAF(code, leaf, a, b, c, d);
-		if ((vmh->vmh_cpuids[index].c & c) != vmh->vmh_cpuids[index].c) {
-			log_debug("%s: incompatible cpu features", __func__);
+		if ((vmh->vmh_cpuids[index].c & c & VMM_CPUIDECX_MASK) != (vmh->vmh_cpuids[index].c & VMM_CPUIDECX_MASK)) {
+			log_debug("%s: incompatible cpu features code: 0x%x leaf: 0x%x  reg: c", __func__, code, leaf);
 			return (-1);
 		}
-		if ((vmh->vmh_cpuids[index].d & d) != vmh->vmh_cpuids[index].d) {
-			log_debug("%s: incompatible cpu features", __func__);
+		if ((vmh->vmh_cpuids[index].d & d & VMM_CPUIDEDX_MASK) != (vmh->vmh_cpuids[index].d & VMM_CPUIDEDX_MASK)) {
+			log_debug("%s: incompatible cpu features code: 0x%x leaf: 0x%x  reg: d", __func__, code, leaf);
 			return (-1);
 		}
 	}
@@ -115,14 +116,16 @@ check_vmh(struct vm_dump_header *vmh) {
 	index = 2;
 	code = vmh->vmh_cpuids[index].code;
 	leaf = vmh->vmh_cpuids[index].leaf;
+
 	if (code == 0x07 && leaf == 0x00) {
 		CPUID_LEAF(code, leaf, a, b, c, d);
-		if ((vmh->vmh_cpuids[index].b & b) != vmh->vmh_cpuids[index].b) {
-			log_debug("%s: incompatible cpu features", __func__);
+		if ((vmh->vmh_cpuids[index].b & b & VMM_SEFF0EBX_MASK) != (vmh->vmh_cpuids[index].b & VMM_SEFF0EBX_MASK)) {
+			log_debug("%s: incompatible cpu features code: 0x%x leaf: 0x%x  reg: c", __func__, code, leaf);
+			log_debug("%d %d %d", b & vmh->vmh_cpuids[index].b, vmh->vmh_cpuids[index].b, b);
 			return (-1);
 		}
-		if ((vmh->vmh_cpuids[index].c & c) != vmh->vmh_cpuids[index].c) {
-			log_debug("%s: incompatible cpu features", __func__);
+		if ((vmh->vmh_cpuids[index].c & c & VMM_SEFF0ECX_MASK) != (vmh->vmh_cpuids[index].c & VMM_SEFF0ECX_MASK)) {
+			log_debug("%s: incompatible cpu features code: 0x%x leaf: 0x%x  reg: d", __func__, code, leaf);
 			return (-1);
 		}
 	}
@@ -132,12 +135,12 @@ check_vmh(struct vm_dump_header *vmh) {
 	leaf = vmh->vmh_cpuids[index].leaf;
 	if (code == 0x0d && leaf == 0x00) {
 		CPUID_LEAF(code, leaf, a, b, c, d);
-		if ((vmh->vmh_cpuids[index].b & b) != vmh->vmh_cpuids[index].b) {
-			log_debug("%s: incompatible cpu features", __func__);
+		if (vmh->vmh_cpuids[index].b > b) {
+			log_debug("%s: incompatible cpu: insufficient max save area for enabled XCR0 features");
 			return (-1);
 		}
-		if ((vmh->vmh_cpuids[index].c & c) != vmh->vmh_cpuids[index].c) {
-			log_debug("%s: incompatible cpu features", __func__);
+		if (vmh->vmh_cpuids[index].c > c) {
+			log_debug("%s: incompatible cpu: insufficient max save area for supported XCR0 features");
 			return (-1);
 		}
 	}
@@ -148,15 +151,15 @@ check_vmh(struct vm_dump_header *vmh) {
 	if (code == 0x80000001 && leaf == 0x00) {
 		CPUID_LEAF(code, leaf, a, b, c, d);
 		if ((vmh->vmh_cpuids[index].a & a) != vmh->vmh_cpuids[index].a) {
-			log_debug("%s: incompatible cpu features", __func__);
+			log_debug("%s: incompatible cpu features code: 0x%x leaf: 0x%x  reg: a", __func__, code, leaf);
 			return (-1);
 		}
 		if ((vmh->vmh_cpuids[index].c & c) != vmh->vmh_cpuids[index].c) {
-			log_debug("%s: incompatible cpu features", __func__);
+			log_debug("%s: incompatible cpu features code: 0x%x leaf: 0x%x  reg: c", __func__, code, leaf);
 			return (-1);
 		}
 		if ((vmh->vmh_cpuids[index].d & d) != vmh->vmh_cpuids[index].d) {
-			log_debug("%s: incompatible cpu features", __func__);
+			log_debug("%s: incompatible cpu features code: 0x%x leaf: 0x%x  reg: d", __func__, code, leaf);
 			return (-1);
 		}
 	}

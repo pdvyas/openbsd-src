@@ -513,7 +513,9 @@ int dump_send_header(int fd) {
 		    vmh.vmh_cpuids[i].d);
 	}
 
-	if (atomicio(vwrite, fd, &vmh, sizeof(vmh)) != sizeof(vmh)) return (-1);
+	if (atomicio(vwrite, fd, &vmh, sizeof(vmh)) != sizeof(vmh))
+		return (-1);
+
 	return (0);
 }
 
