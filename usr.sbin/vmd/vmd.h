@@ -158,7 +158,8 @@ struct vm_dump_header {
 	uint8_t			 vmh_pad[3];
 	uint8_t			 vmh_version;
 #define VM_DUMP_VERSION		 2
-	struct			 vm_dump_header_cpuid vmh_cpuids[VM_DUMP_HEADER_CPUID_COUNT];
+	struct			 vm_dump_header_cpuid
+	    vmh_cpuids[VM_DUMP_HEADER_CPUID_COUNT];
 } __packed;
 
 struct vmboot_params {
