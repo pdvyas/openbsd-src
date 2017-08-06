@@ -158,6 +158,7 @@ int vmm_handle_xsetbv(struct vcpu *, uint64_t *);
 int vmx_handle_xsetbv(struct vcpu *);
 int svm_handle_xsetbv(struct vcpu *);
 int vmm_handle_cpuid(struct vcpu *);
+int vmx_handle_rdtsc(struct vcpu *);
 int vmx_handle_rdmsr(struct vcpu *);
 int vmx_handle_wrmsr(struct vcpu *);
 int vmx_handle_cr0_write(struct vcpu *, uint64_t);
@@ -2138,6 +2139,7 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	 *
 	 * We must be able to set the following:
 	 * IA32_VMX_HLT_EXITING - exit on HLT instruction
+	 * IA32_VMX_RDTSC_EXITING - exit on RDTSC instruction
 	 * IA32_VMX_MWAIT_EXITING - exit on MWAIT instruction
 	 * IA32_VMX_UNCONDITIONAL_IO_EXITING - exit on I/O instructions
 	 * IA32_VMX_USE_MSR_BITMAPS - exit on various MSR accesses
@@ -2150,6 +2152,7 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	 * IA32_VMX_CR3_STORE_EXITING - don't care about guest CR3 accesses
 	 */
 	want1 = IA32_VMX_HLT_EXITING |
+	    IA32_VMX_RDTSC_EXITING |
 	    IA32_VMX_MWAIT_EXITING |
 	    IA32_VMX_UNCONDITIONAL_IO_EXITING |
 	    IA32_VMX_USE_MSR_BITMAPS |
@@ -4286,6 +4289,10 @@ vmx_handle_exit(struct vcpu *vcpu)
 		ret = vmx_handle_rdmsr(vcpu);
 		update_rip = 1;
 		break;
+	case VMX_EXIT_RDTSC:
+		ret = vmx_handle_rdtsc(vcpu);
+		update_rip = 1;
+		break;
 	case VMX_EXIT_WRMSR:
 		ret = vmx_handle_wrmsr(vcpu);
 		update_rip = 1;
@@ -4892,6 +4899,40 @@ vmx_handle_cr(struct vcpu *vcpu)
 		DPRINTF("%s: unknown cr access @ %llx\n", __func__,
 		    vcpu->vc_gueststate.vg_rip);
 	}
+
+	vcpu->vc_gueststate.vg_rip += insn_length;
+
+	return (0);
+}
+
+/*
+ * vmx_handle_rdtsc
+ *
+ * Parameters:
+ *  vcpu: vcpu structure containing instruction info causing the exit
+ *  rax: pointer to guest %rax
+ *
+ * Return value:
+ *  0: The operation was successful
+ *  EINVAL: An error occurred
+ */
+int
+vmx_handle_rdtsc(struct vcpu *vcpu)
+{
+	uint64_t insn_length;
+	uint64_t *rax, *rdx;
+
+	if (vmread(VMCS_INSTRUCTION_LENGTH, &insn_length)) {
+		printf("%s: can't obtain instruction length\n", __func__);
+		return (EINVAL);
+	}
+
+	/* RDTSC instruction is 0x0F 0x31 */
+	KASSERT(insn_length == 2);
+
+	rax = &vcpu->vc_gueststate.vg_rax;
+	rdx = &vcpu->vc_gueststate.vg_rdx;
+	__asm volatile("rdtsc" : "=d" (*rdx), "=a" (*rax));
 
 	vcpu->vc_gueststate.vg_rip += insn_length;
 
