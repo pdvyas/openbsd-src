@@ -84,6 +84,7 @@ int dump_vmr(int , struct vm_mem_range *);
 int dump_mem(int, struct vm_create_params *);
 void restore_vmr(int, struct vm_mem_range *);
 void restore_mem(int, struct vm_create_params *);
+void restore_tsc(int, struct vm_create_params *);
 void pause_vm(struct vm_create_params *);
 void unpause_vm(struct vm_create_params *);
 
@@ -353,6 +354,7 @@ start_vm(struct vmd_vm *vm, int fd)
 		restore_emulated_hw(vcp, vm->vm_receive_fd, nicfds,
 		    vm->vm_disks);
 		restore_mem(vm->vm_receive_fd, vcp);
+		restore_tsc(vm->vm_receive_fd, vcp);
 	}
 
 	if (vmm_pipe(vm, fd, vm_dispatch_vmm) == -1)
@@ -487,6 +489,7 @@ int
 send_vm(int fd, struct vm_create_params *vcp)
 {
 	struct vm_rwregs_params	   vrp;
+	struct vm_rwtscinfo_params vtip;
 	struct vmop_create_params *vmc;
 	struct vm_terminate_params vtp;
 	struct vm_dump_header	   vmh;
@@ -550,6 +553,17 @@ send_vm(int fd, struct vm_create_params *vcp)
 	if ((ret = dump_mem(fd, vcp)))
 		goto err;
 
+	if (ioctl(env->vmd_fd, VMM_IOC_READTSCINFO, &vtip) < 0) {
+		ret = errno;
+		log_debug("read tsc failed");
+		goto err;
+	}
+
+	if ((ret = atomicio(vwrite, fd, &vtip,
+	    sizeof(struct vm_rwtscinfo_params)) !=
+	    sizeof(struct vm_rwtscinfo_params)))
+		goto err;
+
 	vtp.vtp_vm_id = vcp->vcp_id;
 	if (ioctl(env->vmd_fd, VMM_IOC_TERM, &vtp) < 0) {
 		log_warnx("%s: term IOC error: %d, %d", __func__,
@@ -576,6 +590,18 @@ dump_mem(int fd, struct vm_create_params *vcp)
 			return ret;
 	}
 	return (0);
+}
+
+void
+restore_tsc(int fd, struct vm_create_params *vcp) {
+	struct vm_rwtscinfo_params vtip;
+	if (atomicio(read, fd, &vtip, sizeof(vtip)) != sizeof(vtip)) {
+		log_debug("error restoring tsc");
+	}
+	vtip.vtip_vm_id = vcp->vcp_id;
+	if (ioctl(env->vmd_fd, VMM_IOC_WRITETSCINFO, &vtip) < 0) {
+		log_debug("write tsc failed");
+	}
 }
 
 void
@@ -1200,6 +1226,7 @@ void *
 vcpu_run_loop(void *arg)
 {
 	struct vm_run_params *vrp = (struct vm_run_params *)arg;
+	struct vm_rwtscinfo_params vtip;
 	intptr_t ret = 0;
 	int irq;
 	uint32_t n;
@@ -1270,6 +1297,9 @@ vcpu_run_loop(void *arg)
 				fatal("can't clear INTR");
 			}
 		}
+
+		vtip.vtip_vm_id = vrp->vrp_vm_id;
+		vtip.vtip_vcpu_id = 0;
 
 		if (ioctl(env->vmd_fd, VMM_IOC_RUN, vrp) < 0) {
 			/* If run ioctl failed, exit */

@@ -569,6 +569,7 @@ identifycpu(struct cpu_info *ci)
 	}
 
 	ci->ci_tsc_freq = cpu_tsc_freq(ci);
+	printf("here: setting freq to %llu", ci->ci_tsc_freq);
 
 	amd_cpu_cacheinfo(ci);
 

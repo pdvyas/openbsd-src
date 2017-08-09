@@ -45,7 +45,7 @@
 /* #define VMM_DEBUG */
 
 #ifdef VMM_DEBUG
-int vmm_debug = 0;
+int vmm_debug = 1;
 #define DPRINTF(x...)	do { if (vmm_debug) printf(x); } while(0)
 #else
 #define DPRINTF(x...)
@@ -123,6 +123,7 @@ int vm_get_info(struct vm_info_params *);
 int vm_resetcpu(struct vm_resetcpu_params *);
 int vm_intr_pending(struct vm_intr_params *);
 int vm_rwregs(struct vm_rwregs_params *, int);
+int vm_rwtsc(struct vm_rwtscinfo_params *, int);
 int vm_find(uint32_t, struct vm **);
 int vcpu_readregs_vmx(struct vcpu *, uint64_t, struct vcpu_reg_state *);
 int vcpu_readregs_svm(struct vcpu *, uint64_t, struct vcpu_reg_state *);
@@ -455,6 +456,13 @@ vmmioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
 	case VMM_IOC_WRITEREGS:
 		ret = vm_rwregs((struct vm_rwregs_params *)data, 1);
 		break;
+	case VMM_IOC_READTSCINFO:
+		ret = vm_rwtsc((struct vm_rwtscinfo_params *)data, 0);
+		break;
+	case VMM_IOC_WRITETSCINFO:
+		ret = vm_rwtsc((struct vm_rwtscinfo_params *)data, 1);
+		break;
+
 	default:
 		DPRINTF("%s: unknown ioctl code 0x%lx\n", __func__, cmd);
 		ret = ENOTTY;
@@ -486,6 +494,8 @@ pledge_ioctl_vmm(struct proc *p, long com)
 	case VMM_IOC_INTR:
 	case VMM_IOC_READREGS:
 	case VMM_IOC_WRITEREGS:
+	case VMM_IOC_READTSCINFO:
+	case VMM_IOC_WRITETSCINFO:
 		return (0);
 	}
 
@@ -634,6 +644,58 @@ vm_intr_pending(struct vm_intr_params *vip)
 #endif /* MULTIPROCESSOR */
 
 	return (0);
+}
+
+/*
+ * vm_rwtsc
+ *
+ * IOCTL handler to read/write the current tsc value and frequency of a guest
+ * VCPU.
+ *
+ * Parameters:
+ *   vrwp: Describes the VM and VCPU to get/set the tsc info from.
+ *   dir: 0 for reading, 1 for writing
+ *
+ * Return values:
+ *  0: if successful
+ *  ENOENT: if the VM/VCPU defined by 'vgp' cannot be found
+ *  EINVAL: if an error occured reading the registers of the guest
+ */
+int
+vm_rwtsc(struct vm_rwtscinfo_params *vtip, int dir) {
+	struct vm *vm;
+	struct vcpu *vcpu;
+	struct cpu_info *ci;
+	int error;
+
+	if (dir == 0) {
+		ci = curcpu();
+		vtip->vtip_tsc_base = rdtsc();
+		vtip->vtip_tsc_freq = ci->ci_tsc_freq;
+		return (0);
+	}
+
+	/* Find the desired VM */
+	rw_enter_read(&vmm_softc->vm_lock);
+	error = vm_find(vtip->vtip_vm_id, &vm);
+
+	/* Not found? exit. */
+	if (error != 0) {
+		rw_exit_read(&vmm_softc->vm_lock);
+		return (error);
+	}
+
+	rw_enter_read(&vm->vm_vcpu_lock);
+	SLIST_FOREACH(vcpu, &vm->vm_vcpu_list, vc_vcpu_link) {
+		if (vcpu->vc_id == vtip->vtip_vcpu_id)
+			break;
+	}
+	rw_exit_read(&vm->vm_vcpu_lock);
+	rw_exit_read(&vmm_softc->vm_lock);
+
+	vcpu->vc_tsc_offset = vtip->vtip_tsc_base - rdtsc();
+	return (0);
+
 }
 
 /*
@@ -1087,6 +1149,7 @@ vm_create(struct vm_create_params *vcp, struct proc *p)
 		}
 		rw_enter_write(&vm->vm_vcpu_lock);
 		vcpu->vc_id = vm->vm_vcpu_ct;
+		vcpu->vc_tsc_offset = vcp->vcp_tsc_offset;
 		vm->vm_vcpu_ct++;
 		SLIST_INSERT_HEAD(&vm->vm_vcpu_list, vcpu, vc_vcpu_link);
 		rw_exit_write(&vm->vm_vcpu_lock);
@@ -4930,7 +4993,7 @@ int
 vmx_handle_rdtsc(struct vcpu *vcpu)
 {
 	uint64_t insn_length;
-	uint64_t *rax, *rdx;
+	uint64_t guest_tsc;
 
 	if (vmread(VMCS_INSTRUCTION_LENGTH, &insn_length)) {
 		printf("%s: can't obtain instruction length\n", __func__);
@@ -4940,9 +5003,9 @@ vmx_handle_rdtsc(struct vcpu *vcpu)
 	/* RDTSC instruction is 0x0F 0x31 */
 	KASSERT(insn_length == 2);
 
-	rax = &vcpu->vc_gueststate.vg_rax;
-	rdx = &vcpu->vc_gueststate.vg_rdx;
-	__asm volatile("rdtsc" : "=d" (*rdx), "=a" (*rax));
+	guest_tsc = rdtsc() + vcpu->vc_tsc_offset;
+	vcpu->vc_gueststate.vg_rax = (guest_tsc << 32) >> 32;
+	vcpu->vc_gueststate.vg_rdx = guest_tsc >> 32;
 
 	vcpu->vc_gueststate.vg_rip += insn_length;
 
@@ -7269,9 +7332,9 @@ vmm_decode_cr0(uint64_t cr0)
 	DPRINTF("(");
 	for (i = 0; i < 11; i++)
 		if (cr0 & cr0_info[i].vrdi_bit)
-			DPRINTF(cr0_info[i].vrdi_present);
+			DPRINTF("%d", cr0_info[i].vrdi_present);
 		else
-			DPRINTF(cr0_info[i].vrdi_absent);
+			DPRINTF("%d", cr0_info[i].vrdi_absent);
 	
 	DPRINTF(")\n");
 }
@@ -7297,9 +7360,9 @@ vmm_decode_cr3(uint64_t cr3)
 		DPRINTF("(");
 		for (i = 0 ; i < 2 ; i++)
 			if (cr3 & cr3_info[i].vrdi_bit)
-				DPRINTF(cr3_info[i].vrdi_present);
+				DPRINTF("%d", cr3_info[i].vrdi_present);
 			else
-				DPRINTF(cr3_info[i].vrdi_absent);
+				DPRINTF("%d", cr3_info[i].vrdi_absent);
 
 		DPRINTF(")\n");
 	} else {
@@ -7337,9 +7400,9 @@ vmm_decode_cr4(uint64_t cr4)
 	DPRINTF("(");
 	for (i = 0; i < 19; i++)
 		if (cr4 & cr4_info[i].vrdi_bit)
-			DPRINTF(cr4_info[i].vrdi_present);
+			DPRINTF("%d", cr4_info[i].vrdi_present);
 		else
-			DPRINTF(cr4_info[i].vrdi_absent);
+			DPRINTF("%d", cr4_info[i].vrdi_absent);
 	
 	DPRINTF(")\n");
 }
@@ -7358,9 +7421,9 @@ vmm_decode_apicbase_msr_value(uint64_t apicbase)
 	DPRINTF("(");
 	for (i = 0; i < 3; i++)
 		if (apicbase & apicbase_info[i].vrdi_bit)
-			DPRINTF(apicbase_info[i].vrdi_present);
+			DPRINTF("%d", apicbase_info[i].vrdi_present);
 		else
-			DPRINTF(apicbase_info[i].vrdi_absent);
+			DPRINTF("%d", apicbase_info[i].vrdi_absent);
 	
 	DPRINTF(")\n");
 }
@@ -7380,9 +7443,9 @@ vmm_decode_ia32_fc_value(uint64_t fcr)
 	DPRINTF("(");
 	for (i = 0; i < 4; i++)
 		if (fcr & fcr_info[i].vrdi_bit)
-			DPRINTF(fcr_info[i].vrdi_present);
+			DPRINTF("%d", fcr_info[i].vrdi_present);
 		else
-			DPRINTF(fcr_info[i].vrdi_absent);
+			DPRINTF("%d", fcr_info[i].vrdi_absent);
 
 	if (fcr & IA32_FEATURE_CONTROL_SENTER_EN)
 		DPRINTF(" [SENTER param = 0x%llx]",
@@ -7405,9 +7468,9 @@ vmm_decode_mtrrcap_value(uint64_t val)
 	DPRINTF("(");
 	for (i = 0; i < 3; i++)
 		if (val & mtrrcap_info[i].vrdi_bit)
-			DPRINTF(mtrrcap_info[i].vrdi_present);
+			DPRINTF("%d", mtrrcap_info[i].vrdi_present);
 		else
-			DPRINTF(mtrrcap_info[i].vrdi_absent);
+			DPRINTF("%d", mtrrcap_info[i].vrdi_absent);
 
 	if (val & MTRRcap_FIXED)
 		DPRINTF(" [nr fixed ranges = 0x%llx]",
@@ -7442,9 +7505,9 @@ vmm_decode_mtrrdeftype_value(uint64_t mtrrdeftype)
 	DPRINTF("(");
 	for (i = 0; i < 2; i++)
 		if (mtrrdeftype & mtrrdeftype_info[i].vrdi_bit)
-			DPRINTF(mtrrdeftype_info[i].vrdi_present);
+			DPRINTF("%d", mtrrdeftype_info[i].vrdi_present);
 		else
-			DPRINTF(mtrrdeftype_info[i].vrdi_absent);
+			DPRINTF("%d", mtrrdeftype_info[i].vrdi_absent);
 
 	DPRINTF("type = ");
 	type = mtrr2mrt(mtrrdeftype & 0xff);
@@ -7478,9 +7541,9 @@ vmm_decode_efer_value(uint64_t efer)
 	DPRINTF("(");
 	for (i = 0; i < 4; i++)
 		if (efer & efer_info[i].vrdi_bit)
-			DPRINTF(efer_info[i].vrdi_present);
+			DPRINTF("%d", efer_info[i].vrdi_present);
 		else
-			DPRINTF(efer_info[i].vrdi_absent);
+			DPRINTF("%d", efer_info[i].vrdi_absent);
 
 	DPRINTF(")\n");
 }

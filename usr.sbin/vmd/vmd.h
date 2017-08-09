@@ -151,6 +151,7 @@ struct vm_dump_header {
 	uint8_t			 vmh_pad[3];
 	uint8_t			 vmh_version;
 #define VM_DUMP_VERSION		 1
+	uint64_t		 vmh_tsc;
 } __packed;
 
 struct vmboot_params {
