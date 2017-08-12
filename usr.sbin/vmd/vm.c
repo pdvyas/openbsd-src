@@ -599,6 +599,7 @@ restore_tsc(int fd, struct vm_create_params *vcp) {
 		log_debug("error restoring tsc");
 	}
 	vtip.vtip_vm_id = vcp->vcp_id;
+	vtip.vtip_vcpu_id = 0;
 	if (ioctl(env->vmd_fd, VMM_IOC_WRITETSCINFO, &vtip) < 0) {
 		log_debug("write tsc failed");
 	}
@@ -1446,6 +1447,7 @@ vcpu_exit(struct vm_run_params *vrp)
 	case SVM_VMEXIT_VINTR:
 	case VMX_EXIT_CPUID:
 	case VMX_EXIT_EXTINT:
+	case VMX_EXIT_RDTSC:
 	case SVM_VMEXIT_INTR:
 	case VMX_EXIT_EPT_VIOLATION:
 	case SVM_VMEXIT_NPF:

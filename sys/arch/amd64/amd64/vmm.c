@@ -5004,7 +5004,7 @@ vmx_handle_rdtsc(struct vcpu *vcpu)
 	KASSERT(insn_length == 2);
 
 	guest_tsc = rdtsc() + vcpu->vc_tsc_offset;
-	vcpu->vc_gueststate.vg_rax = (guest_tsc << 32) >> 32;
+	vcpu->vc_gueststate.vg_rax = guest_tsc & 0x00000000ffffffff;
 	vcpu->vc_gueststate.vg_rdx = guest_tsc >> 32;
 
 	vcpu->vc_gueststate.vg_rip += insn_length;
