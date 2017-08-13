@@ -24,9 +24,11 @@
 #include <machine/vmmvar.h>
 
 #include <string.h>
+#include <unistd.h>
 #include "vmd.h"
 #include "pci.h"
 #include "vmm.h"
+#include "atomicio.h"
 
 struct pci pci;
 
@@ -98,6 +100,26 @@ pci_add_bar(uint8_t id, uint32_t type, void *barfn, void *cookie)
 		pci.pci_devices[id].pd_barsize[bar_ct] = VMM_PCI_IO_BAR_SIZE;
 		pci.pci_devices[id].pd_bar_ct++;
 	}
+
+	return (0);
+}
+
+int
+pci_set_bar_fn(uint8_t id, void *barfn, void *cookie)
+{
+	uint8_t bar_ct;
+
+	/* Check id */
+	if (id >= pci.pci_dev_ct)
+		return (1);
+
+	/* XXX: right now, we don't add more than one bar to a device  */
+	bar_ct = 0;
+	if (bar_ct >= PCI_MAX_BARS)
+		return (1);
+
+	pci.pci_devices[id].pd_barfunc[bar_ct] = barfn;
+	pci.pci_devices[id].pd_bar_cookie[bar_ct] = cookie;
 
 	return (0);
 }
@@ -385,4 +407,26 @@ pci_handle_data_reg(struct vm_run_params *vrp)
 			}
 		}
 	}
+}
+
+int
+pci_dump(int fd)
+{
+	log_debug("%s: sending pci", __func__);
+	if (atomicio(vwrite, fd, &pci, sizeof(pci)) != sizeof(pci)) {
+		log_warnx("%s: error writing pci to fd", __func__);
+		return (-1);
+	}
+	return (0);
+}
+
+int
+pci_restore(int fd)
+{
+	log_debug("%s: receiving pci", __func__);
+	if (atomicio(read, fd, &pci, sizeof(pci)) != sizeof(pci)) {
+		log_warnx("%s: error reading pci from fd", __func__);
+		return (-1);
+	}
+	return (0);
 }

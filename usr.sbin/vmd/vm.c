@@ -546,6 +546,8 @@ send_vm(int fd, struct vm_create_params *vcp)
 		goto err;
 	if ((ret = mc146818_dump(fd)))
 		goto err;
+	if ((ret = pci_dump(fd)))
+		goto err;
 	if ((ret = virtio_dump(fd)))
 		goto err;
 	if ((ret = dump_mem(fd, vcp)))
@@ -952,7 +954,7 @@ restore_emulated_hw(struct vm_create_params *vcp, int fd,
 	ioports_map[PCI_MODE1_DATA_REG + 1] = vcpu_exit_pci;
 	ioports_map[PCI_MODE1_DATA_REG + 2] = vcpu_exit_pci;
 	ioports_map[PCI_MODE1_DATA_REG + 3] = vcpu_exit_pci;
-	pci_init();
+	pci_restore(fd);
 	virtio_restore(fd, current_vm, child_disks, child_taps);
 }
 

@@ -95,6 +95,8 @@ struct viornd_dev {
 	struct virtio_io_cfg cfg;
 
 	struct virtio_vq_info vq[VIRTIO_MAX_QUEUES];
+
+	uint8_t pci_id;
 };
 
 struct vioblk_dev {
@@ -105,6 +107,8 @@ struct vioblk_dev {
 	int fd;
 	uint64_t sz;
 	uint32_t max_xfer;
+
+	uint8_t pci_id;
 };
 
 struct vionet_dev {
@@ -125,6 +129,8 @@ struct vionet_dev {
 	int idx;
 	int lockedmac;
 	int local;
+
+	uint8_t pci_id;
 };
 
 struct virtio_net_hdr {
@@ -157,6 +163,8 @@ struct vmmci_dev {
 	enum vmmci_cmd cmd;
 	uint32_t vm_id;
 	int irq;
+
+	uint8_t pci_id;
 };
 
 /* virtio.c */
