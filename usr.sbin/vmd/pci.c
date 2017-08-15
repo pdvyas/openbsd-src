@@ -105,16 +105,12 @@ pci_add_bar(uint8_t id, uint32_t type, void *barfn, void *cookie)
 }
 
 int
-pci_set_bar_fn(uint8_t id, void *barfn, void *cookie)
+pci_set_bar_fn(uint8_t id, uint8_t bar_ct, void *barfn, void *cookie)
 {
-	uint8_t bar_ct;
-
 	/* Check id */
 	if (id >= pci.pci_dev_ct)
 		return (1);
 
-	/* XXX: right now, we don't add more than one bar to a device  */
-	bar_ct = 0;
 	if (bar_ct >= PCI_MAX_BARS)
 		return (1);
 

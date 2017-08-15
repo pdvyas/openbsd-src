@@ -1864,8 +1864,8 @@ vmmci_restore(int fd, uint32_t vm_id)
 		return (-1);
 	}
 
-	if (pci_set_bar_fn(vmmci.pci_id, vmmci_io, NULL)) {
-		log_warnx("%s: can't set bar fn  for vmm control device",
+	if (pci_set_bar_fn(vmmci.pci_id, 0, vmmci_io, NULL)) {
+		log_warnx("%s: can't set bar fn for vmm control device",
 		    __progname);
 		return (-1);
 	}
@@ -1883,7 +1883,7 @@ viornd_restore(int fd)
 		log_warnx("%s: error reading viornd from fd", __func__);
 		return (-1);
 	}
-	if (pci_set_bar_fn(viornd.pci_id, virtio_rnd_io, NULL)) {
+	if (pci_set_bar_fn(viornd.pci_id, 0, virtio_rnd_io, NULL)) {
 		log_warnx("%s: can't set bar fn for virtio rng device",
 		    __progname);
 		return (-1);
@@ -1918,7 +1918,7 @@ vionet_restore(int fd, struct vmd_vm *vm, int *child_taps)
 
 		/* Virtio network */
 		for (i = 0; i < vcp->vcp_nnics; i++) {
-			if (pci_set_bar_fn(vionet[i].pci_id, virtio_net_io,
+			if (pci_set_bar_fn(vionet[i].pci_id, 0, virtio_net_io,
 			    &vionet[i])) {
 				log_warnx("%s: can't set bar fn for virtio net "
 				    "device", __progname);
@@ -1975,7 +1975,7 @@ vioblk_restore(int fd, struct vm_create_params *vcp, int *child_disks)
 		if ((sz = lseek(child_disks[i], 0, SEEK_END)) == -1)
 			continue;
 
-		if (pci_set_bar_fn(vioblk[i].pci_id, virtio_blk_io,
+		if (pci_set_bar_fn(vioblk[i].pci_id, 0, virtio_blk_io,
 		    &vioblk[i])) {
 			log_warnx("%s: can't set bar fn for virtio block "
 			    "device", __progname);
