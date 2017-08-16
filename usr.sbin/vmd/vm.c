@@ -33,6 +33,9 @@
 #include <machine/psl.h>
 #include <machine/specialreg.h>
 #include <machine/vmmvar.h>
+#include <machine/pte.h>
+#include <machine/pte.h>
+#include "pmap.h"
 
 #include <net/if.h>
 
@@ -63,6 +66,7 @@
 #include "atomicio.h"
 
 io_fn_t ioports_map[MAX_PORTS];
+int once=0;
 
 int run_vm(int *, int *, struct vmop_create_params *, struct vcpu_reg_state *);
 void vm_dispatch_vmm(int, short, void *);
@@ -190,6 +194,136 @@ static const struct vcpu_reg_state vcpu_init_flat16 = {
 	.vrs_crs[VCPU_REGS_XCR0] = XCR0_X87
 #endif
 };
+
+void dump_regs(struct vcpu_reg_state *vrs) {
+        /* log_info("VCPU_REGS_RAX         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RAX]); */
+        /* log_info("VCPU_REGS_RBX         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RBX]); */
+        /* log_info("VCPU_REGS_RCX         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RCX]); */
+        /* log_info("VCPU_REGS_RDX         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RDX]); */
+        /* log_info("VCPU_REGS_RSI         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RSI]); */
+        /* log_info("VCPU_REGS_RDI         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RDI]); */
+        /* log_info("VCPU_REGS_R8          : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R8]); */
+        /* log_info("VCPU_REGS_R9          : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R9]); */
+        /* log_info("VCPU_REGS_R10         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R10]); */
+        /* log_info("VCPU_REGS_R11         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R11]); */
+        /* log_info("VCPU_REGS_R12         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R12]); */
+        /* log_info("VCPU_REGS_R13         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R13]); */
+        /* log_info("VCPU_REGS_R14         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R14]); */
+        /* log_info("VCPU_REGS_R15         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R15]); */
+        /* log_info("VCPU_REGS_RSP         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RSP]); */
+        /* log_info("VCPU_REGS_RBP         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RBP]); */
+        log_info("VCPU_REGS_RIP    : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RIP]);
+        /* log_info("VCPU_REGS_RFLAGS   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RFLAGS]); */
+        /* log_info("VCPU_REGS_CR0         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR0]); */
+        /* log_info("VCPU_REGS_CR2         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR2]); */
+        log_info("VCPU_REGS_CR3         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR3]);
+        /* log_info("VCPU_REGS_CR4         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR4]); */
+        /* log_info("VCPU_REGS_CR8         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR8]); */
+        log_info("VCPU_REGS_CS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_CS].vsi_base, vrs->vrs_sregs[VCPU_REGS_CS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_CS].vsi_sel);
+        /* log_info("VCPU_REGS_DS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_DS].vsi_base, vrs->vrs_sregs[VCPU_REGS_DS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_DS].vsi_sel); */
+        /* log_info("VCPU_REGS_ES          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_ES].vsi_base, vrs->vrs_sregs[VCPU_REGS_ES].vsi_limit, vrs->vrs_sregs[VCPU_REGS_ES].vsi_sel); */
+        /* log_info("VCPU_REGS_FS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_FS].vsi_base, vrs->vrs_sregs[VCPU_REGS_FS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_FS].vsi_sel); */
+        /* log_info("VCPU_REGS_GS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_GS].vsi_base, vrs->vrs_sregs[VCPU_REGS_GS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_GS].vsi_sel); */
+        /* log_info("VCPU_REGS_SS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_SS].vsi_base, vrs->vrs_sregs[VCPU_REGS_SS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_SS].vsi_sel); */
+        /* log_info("VCPU_REGS_LDTR   : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_gdtr.vsi_base, vrs->vrs_gdtr.vsi_limit, vrs->vrs_gdtr.vsi_sel); */
+        /* log_info("VCPU_REGS_IDTR   : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_idtr.vsi_base, vrs->vrs_idtr.vsi_limit, vrs->vrs_idtr.vsi_sel); */
+
+
+        /* log_info("VCPU_REGS_EFER        : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_EFER]); */
+        /* log_info("VCPU_REGS_STAR        : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_STAR]); */
+        /* log_info("VCPU_REGS_LSTAR       : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_LSTAR]); */
+        /* log_info("VCPU_REGS_CSTAR       : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_CSTAR]); */
+        /* log_info("VCPU_REGS_SFMASK      : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_SFMASK]); */
+        /* log_info("VCPU_REGS_KGSBASE     : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_KGSBASE]); */
+}
+
+
+gva2gpa() {
+	int ret;
+	struct vm_create_params *vcp;
+	struct vm_rwregs_params	   vrp;
+	uint64_t pml4_base, pml4e_addr, pml4_offset, pml4e;
+	uint64_t pdpte_base, pdpte_offset, pdpte_addr, pdpte;
+	uint64_t pde_base, pde_offset, pde_addr, pde;
+	uint64_t pt_base, pt_offset, pt_addr, pt;
+	uint64_t addr;
+	uint64_t p_addr;
+	char p;
+	struct vcpu_reg_state *vrs;
+	vcp = &current_vm->vm_params.vmc_params;
+	vrp.vrwp_vm_id = vcp->vcp_id;
+	vrp.vrwp_vcpu_id = 0;
+	vrp.vrwp_mask = VM_RWREGS_ALL;
+	vrp.vrwp_mask = -1;
+	vrs = &vrp.vrwp_regs;
+	if ((ret = ioctl(env->vmd_fd, VMM_IOC_READREGS, &vrp))) {
+		log_warn("%s: readregs failed", __func__);
+	}
+	dump_regs(&vrp.vrwp_regs);
+	log_info("PCIDE: %llu", vrp.vrwp_regs.vrs_crs[VCPU_REGS_CR4] & CR4_PCIDE);
+        addr = vrs->vrs_gprs[VCPU_REGS_RIP];
+	addr = addr -1;
+
+
+	pml4_base = vrs->vrs_crs[VCPU_REGS_CR3] & PG_FRAME;
+	pml4_offset = pl4_pi(addr) * sizeof(uint64_t);
+	log_info("pml4_base: 0x%016llx", pml4_base);
+	log_info("pml4_offset: 0x%016llx", pml4_offset);
+	pml4e_addr = pml4_base + pml4_offset;
+	log_info("pml4e addr: 0x%016llx", pml4e_addr);
+	read_mem(pml4e_addr, &pml4e, sizeof(pml4e));
+	log_info("pml4e: 0x%016llu", pml4e);
+
+	pdpte_base = (pml4e & PG_FRAME);
+	log_info("pdpte base: 0x%016llx", pdpte_base);
+	pdpte_offset = pl3_pi(addr) * sizeof(pdpte);
+	log_info("pdpte offset: 0x%016llx", pdpte_offset);
+	pdpte_addr = pdpte_base + pdpte_offset;
+	log_info("pdpte addr: 0x%016llx", pdpte_addr);
+	read_mem(pdpte_addr, &pdpte, sizeof(pdpte));
+	log_info("pdpte: 0x%016llx", pdpte);
+
+	pde_base = (pdpte & PG_FRAME);
+	log_info("pde base: 0x%016llx", pde_base);
+	pde_offset = pl2_pi(addr) * sizeof(pde);
+	log_info("pde offset: 0x%016llx", pde_offset);
+	pde_addr = pde_base + pde_offset;
+	log_info("pde addr: 0x%016llx", pde_addr);
+	read_mem(pde_addr, &pde, sizeof(pde));
+	log_info("pde: 0x%016llx", pde);
+
+	pt_base = (pde & PG_FRAME);
+	log_info("pt base: 0x%016llx", pt_base);
+	pt_offset = pl1_pi(addr) * sizeof(pt);
+	log_info("pt offset: 0x%016llx", pt_offset);
+	pt_addr = pt_base + pt_offset;
+	log_info("pt addr: 0x%016llx", pt_addr);
+	read_mem(pt_addr, &pt, sizeof(pt));
+	log_info("pt: 0x%016llx", pt);
+
+	p_addr = (pt & PG_FRAME) + (addr & 0xfff);
+	log_info("p_ddr 0x%016llx", p_addr);
+	read_mem(p_addr, &p, sizeof(p));
+	log_info("p 0x%x %d", p, sizeof(p));
+	read_mem(p_addr + 1, &p, sizeof(p));
+	log_info("p 0x%x %d", p, sizeof(p));
+
+	/* pml4_offset = pl4_pi(addr) << 2;// * sizeof(pd_entry_t); */
+	/* pml4_offset = (VA_SIGN_POS(addr) & L4_FRAME) >> L4_SHIFT; */
+	/* pml4_offset = pml4_offset << 3; */
+        /*  */
+	/* pml4e_addr = 0x0000000001a06023 ; */
+	/* log_info("offset: %016llu", pml4e_addr - pml4_base); */
+	/* log_info("valid pml4e: %d", pml4e & PG_V); */
+	/* log_info("acc pml4e: %d", pml4e & (1ULL << 5)); */
+	/* pdpte_offset = ((VA_SIGN_POS(addr) & L3_FRAME) >> L3_SHIFT); */
+	/* pdpte_offset = pdpte_offset << 3; */
+	/* log_info("pdpte offset: 0x%016llx", pdpte_offset); */
+	/* log_info("valid pdpte: %d", pdpte & PG_V); */
+
+	log_info("hello");
+	fatal("ok");
+}
 
 /*
  * loadfile_bios
@@ -1388,6 +1522,7 @@ vcpu_exit_inout(struct vm_run_params *vrp)
 		vcpu_assert_pic_irq(vrp->vrp_vm_id, vrp->vrp_vcpu_id, intr);
 }
 
+
 /*
  * vcpu_exit
  *
@@ -1443,6 +1578,10 @@ vcpu_exit(struct vm_run_params *vrp)
 			return (ret);
 		}
 		vcpu_hlt[vrp->vrp_vcpu_id] = 1;
+		if (!once)
+			once++;
+		else
+			gva2gpa();
 		ret = pthread_mutex_unlock(&vcpu_run_mtx[vrp->vrp_vcpu_id]);
 		if (ret) {
 			log_warnx("%s: can't unlock vcpu mutex (%d)",
