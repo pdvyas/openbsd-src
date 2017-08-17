@@ -5461,37 +5461,9 @@ vmm_handle_cpuid(struct vcpu *vcpu)
 		break;
 	case 0x07:	/* SEFF */
 		if (*rcx == 0) {
-			/*
-			 * SEFF flags - copy from host minus:
-			 *  SGX (SEFF0EBX_SGX)
-			 *  HLE (SEFF0EBX_HLE)
-			 *  INVPCID (SEFF0EBX_INVPCID)
-			 *  RTM (SEFF0EBX_RTM)
-			 *  PQM (SEFF0EBX_PQM)
-			 *  AVX512F (SEFF0EBX_AVX512F)
-			 *  AVX512DQ (SEFF0EBX_AVX512DQ)
-			 *  AVX512IFMA (SEFF0EBX_AVX512IFMA)
-			 *  AVX512PF (SEFF0EBX_AVX512PF)
-			 *  AVX512ER (SEFF0EBX_AVX512ER)
-			 *  AVX512CD (SEFF0EBX_AVX512CD)
-			 *  AVX512BW (SEFF0EBX_AVX512BW)
-			 *  AVX512VL (SEFF0EBX_AVX512VL)
-			 *  MPX (SEFF0EBX_MPX)
-			 *  PCOMMIT (SEFF0EBX_PCOMMIT)
-			 *  PT (SEFF0EBX_PT)
-			 *  AVX512VBMI (SEFF0ECX_AVX512VBMI)
-			 */
 			*rax = 0;	/* Highest subleaf supported */
-			*rbx = curcpu()->ci_feature_sefflags_ebx &
-			    ~(SEFF0EBX_SGX | SEFF0EBX_HLE | SEFF0EBX_INVPCID |
-			      SEFF0EBX_RTM | SEFF0EBX_PQM | SEFF0EBX_MPX |
-			      SEFF0EBX_PCOMMIT | SEFF0EBX_PT |
-			      SEFF0EBX_AVX512F | SEFF0EBX_AVX512DQ |
-			      SEFF0EBX_AVX512IFMA | SEFF0EBX_AVX512PF |
-			      SEFF0EBX_AVX512ER | SEFF0EBX_AVX512CD |
-			      SEFF0EBX_AVX512BW | SEFF0EBX_AVX512VL);
-			*rcx = curcpu()->ci_feature_sefflags_ecx &
-			    ~(SEFF0ECX_AVX512VBMI);
+			*rbx = curcpu()->ci_feature_sefflags_ebx & VMM_SEFF0EBX_MASK;
+			*rcx = curcpu()->ci_feature_sefflags_ecx & VMM_SEFF0ECX_MASK;
 			*rdx = 0;
 		} else {
 			/* Unsupported subleaf */
