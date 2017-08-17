@@ -248,7 +248,7 @@ gva2gpa() {
 	uint64_t pt_base, pt_offset, pt_addr, pt;
 	uint64_t addr;
 	uint64_t p_addr;
-	char p;
+	uint8_t p;
 	struct vcpu_reg_state *vrs;
 	vcp = &current_vm->vm_params.vmc_params;
 	vrp.vrwp_vm_id = vcp->vcp_id;
@@ -304,9 +304,13 @@ gva2gpa() {
 	p_addr = (pt & PG_FRAME) + (addr & 0xfff);
 	log_info("p_ddr 0x%016llx", p_addr);
 	read_mem(p_addr, &p, sizeof(p));
-	log_info("p 0x%x %d", p, sizeof(p));
+	log_info("p %x %d", p, sizeof(p));
 	read_mem(p_addr + 1, &p, sizeof(p));
-	log_info("p 0x%x %d", p, sizeof(p));
+	log_info("p %x %d", p, sizeof(p));
+	read_mem(p_addr + 2, &p, sizeof(p));
+	log_info("p %x %d", p, sizeof(p));
+	read_mem(p_addr + 3, &p, sizeof(p));
+	log_info("p %x %d", p, sizeof(p));
 
 	/* pml4_offset = pl4_pi(addr) << 2;// * sizeof(pd_entry_t); */
 	/* pml4_offset = (VA_SIGN_POS(addr) & L4_FRAME) >> L4_SHIFT; */
