@@ -353,6 +353,7 @@ start_vm(struct vmd_vm *vm, int fd)
 	if (vm->vm_received) {
 		restore_emulated_hw(vcp, vm->vm_receive_fd, nicfds,
 		    vm->vm_disks);
+		mc146818_start();
 		restore_mem(vm->vm_receive_fd, vcp);
 	}
 
