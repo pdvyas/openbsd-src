@@ -5379,41 +5379,8 @@ vmm_handle_cpuid(struct vcpu *vcpu)
 		/* mask off host's APIC ID, reset to vcpu id */
 		*rbx = cpu_ebxfeature & 0x0000FFFF;
 		*rbx |= (vcpu->vc_id & 0xFF) << 24;
-		/*
-		 * clone host capabilities minus:
-		 *  debug store (CPUIDECX_DTES64, CPUIDECX_DSCPL, CPUID_DS)
-		 *  monitor/mwait (CPUIDECX_MWAIT)
-		 *  vmx (CPUIDECX_VMX)
-		 *  smx (CPUIDECX_SMX)
-		 *  speedstep (CPUIDECX_EST)
-		 *  thermal (CPUIDECX_TM2, CPUID_ACPI, CPUID_TM)
-		 *  context id (CPUIDECX_CNXTID)
-		 *  silicon debug (CPUIDECX_SDBG)
-		 *  xTPR (CPUIDECX_XTPR)
-		 *  perf/debug (CPUIDECX_PDCM)
-		 *  pcid (CPUIDECX_PCID)
-		 *  direct cache access (CPUIDECX_DCA)
-		 *  x2APIC (CPUIDECX_X2APIC)
-		 *  apic deadline (CPUIDECX_DEADLINE)
-		 *  apic (CPUID_APIC)
-		 *  psn (CPUID_PSN)
-		 *  self snoop (CPUID_SS)
-		 *  hyperthreading (CPUID_HTT)
-		 *  pending break enabled (CPUID_PBE)
-		 *  MTRR (CPUID_MTRR)
-		 * plus:
-		 *  hypervisor (CPUIDECX_HV)
-		 */
-		*rcx = (cpu_ecxfeature | CPUIDECX_HV) &
-		    ~(CPUIDECX_EST | CPUIDECX_TM2 | CPUIDECX_MWAIT |
-		    CPUIDECX_PDCM | CPUIDECX_VMX | CPUIDECX_DTES64 |
-		    CPUIDECX_DSCPL | CPUIDECX_SMX | CPUIDECX_CNXTID |
-		    CPUIDECX_SDBG | CPUIDECX_XTPR | CPUIDECX_PCID |
-		    CPUIDECX_DCA | CPUIDECX_X2APIC | CPUIDECX_DEADLINE);
-		*rdx = curcpu()->ci_feature_flags &
-		    ~(CPUID_ACPI | CPUID_TM | CPUID_HTT |
-		      CPUID_DS | CPUID_APIC | CPUID_PSN |
-		      CPUID_SS | CPUID_PBE | CPUID_MTRR);
+		*rcx = (cpu_ecxfeature | CPUIDECX_HV) & VMM_CPUIDECX_MASK;
+		*rdx = curcpu()->ci_feature_flags & VMM_CPUIDEDX_MASK;
 		break;
 	case 0x02:	/* Cache and TLB information */
 		*rax = eax;

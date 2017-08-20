@@ -523,7 +523,6 @@ struct vm_rwregs_params {
  *  direct cache access (CPUIDECX_DCA)
  *  x2APIC (CPUIDECX_X2APIC)
  *  apic deadline (CPUIDECX_DEADLINE)
- *  timestamp (CPUID_TSC)
  *  apic (CPUID_APIC)
  *  psn (CPUID_PSN)
  *  self snoop (CPUID_SS)
@@ -536,7 +535,7 @@ struct vm_rwregs_params {
     CPUIDECX_DSCPL | CPUIDECX_SMX | CPUIDECX_CNXTID | \
     CPUIDECX_SDBG | CPUIDECX_XTPR | CPUIDECX_PCID | \
     CPUIDECX_DCA | CPUIDECX_X2APIC | CPUIDECX_DEADLINE)
-#define VMM_CPUIDEDX_MASK ~(CPUID_ACPI | CPUID_TM | CPUID_TSC | \
+#define VMM_CPUIDEDX_MASK ~(CPUID_ACPI | CPUID_TM \
     CPUID_HTT | CPUID_DS | CPUID_APIC | \
     CPUID_PSN | CPUID_SS | CPUID_PBE | \
     CPUID_MTRR)
