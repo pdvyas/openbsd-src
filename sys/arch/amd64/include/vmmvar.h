@@ -422,6 +422,7 @@ struct vm_create_params {
 	char			vcp_name[VMM_MAX_NAME_LEN];
 	char			vcp_kernel[VMM_MAX_KERNEL_PATH];
 	uint8_t			vcp_macs[VMM_MAX_NICS_PER_VM][6];
+	uint64_t		vcp_tsc_offset;
 
 	/* Output parameter from VMM_IOC_CREATE */
 	uint32_t	vcp_id;
@@ -481,6 +482,14 @@ struct vm_intr_params {
 	uint16_t		vip_intr;
 };
 
+struct vm_rwvmmparams_params {
+	/* Input parameters to VMM_IOC_INTR */
+	uint32_t		vpp_vm_id;
+	uint32_t		vpp_vcpu_id;
+	uint64_t		vpp_tsc_base;
+	uint64_t		vpp_tsc_freq;
+};
+
 #define VM_RWREGS_GPRS	0x1	/* read/write GPRs */
 #define VM_RWREGS_SREGS	0x2	/* read/write segment registers */
 #define VM_RWREGS_CRS	0x4	/* read/write CRs */
@@ -504,6 +513,8 @@ struct vm_rwregs_params {
 #define VMM_IOC_INTR _IOW('V', 6, struct vm_intr_params) /* Intr pending */
 #define VMM_IOC_READREGS _IOWR('V', 7, struct vm_rwregs_params) /* Get registers */
 #define VMM_IOC_WRITEREGS _IOW('V', 8, struct vm_rwregs_params) /* Set registers */
+#define VMM_IOC_READVMMPARAMS _IOWR('V', 9, struct vm_rwvmmparams_params) /* Get tsc info */
+#define VMM_IOC_WRITEVMMPARAMS _IOW('V', 10, struct vm_rwvmmparams_params) /* Set tsc info */
 
 
 /* CPUID masks */
@@ -831,6 +842,9 @@ struct vcpu {
 	vaddr_t vc_vmx_msr_entry_load_va;
 	paddr_t vc_vmx_msr_entry_load_pa;
 	uint8_t vc_vmx_vpid_enabled;
+
+	int64_t vc_tsc_offset;
+	int64_t vc_tsc_scaling_factor;
 
 	/* SVM only */
 	vaddr_t vc_svm_hsa_va;
