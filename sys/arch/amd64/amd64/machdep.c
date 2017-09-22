@@ -425,6 +425,8 @@ int
 cpu_sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp,
     size_t newlen, struct proc *p)
 {
+	extern uint64_t amd64_tsc_frequency;
+	extern int amd64_has_invariant_tsc;
 	extern int amd64_has_xcrypt;
 	dev_t consdev;
 	dev_t dev;
@@ -496,6 +498,12 @@ cpu_sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp,
 			pckbc_release_console();
 		return (error);
 #endif
+	case CPU_TSCFREQ:
+		return (sysctl_rdquad(oldp, oldlenp, newp,
+		    amd64_tsc_frequency));
+	case CPU_INVARIANTTSC:
+		return (sysctl_rdint(oldp, oldlenp, newp,
+		    amd64_has_invariant_tsc));
 	default:
 		return (EOPNOTSUPP);
 	}

@@ -96,5 +96,6 @@ void x86_ipi_init(int);
 void identifycpu(struct cpu_info *);
 void cpu_init(struct cpu_info *);
 void cpu_init_first(void);
+void cpu_adjust_tsc_freq(uint64_t (*)());
 
 #endif

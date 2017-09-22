@@ -264,6 +264,10 @@ acpihpet_attach(struct device *parent, struct device *self, void *aux)
 	hpet_timecounter.tc_priv = sc;
 	hpet_timecounter.tc_name = sc->sc_dev.dv_xname;
 	tc_init(&hpet_timecounter);
+#if defined(__amd64__)
+	extern void cpu_recalibrate_tsc(struct timecounter *);
+	cpu_recalibrate_tsc(&hpet_timecounter);
+#endif
 	acpihpet_attached++;
 }
 

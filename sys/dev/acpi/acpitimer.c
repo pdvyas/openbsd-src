@@ -96,6 +96,10 @@ acpitimerattach(struct device *parent, struct device *self, void *aux)
 	acpi_timecounter.tc_priv = sc;
 	acpi_timecounter.tc_name = sc->sc_dev.dv_xname;
 	tc_init(&acpi_timecounter);
+#if defined(__amd64__)
+	extern void cpu_recalibrate_tsc(struct timecounter *);
+	cpu_recalibrate_tsc(&acpi_timecounter);
+#endif
 }
 
 

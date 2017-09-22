@@ -138,7 +138,6 @@ struct cpu_info {
 	u_int32_t	ci_family;
 	u_int32_t	ci_model;
 	u_int32_t	ci_cflushsz;
-	u_int64_t	ci_tsc_freq;
 
 	int		ci_inatomic;
 
@@ -427,7 +426,9 @@ void mp_setperf_init(void);
 #define CPU_XCRYPT		12	/* supports VIA xcrypt in userland */
 #define CPU_LIDACTION		14	/* action caused by lid close */
 #define CPU_FORCEUKBD		15	/* Force ukbd(4) as console keyboard */
-#define CPU_MAXID		16	/* number of valid machdep ids */
+#define CPU_TSCFREQ		16	/* tsc frequency */
+#define CPU_INVARIANTTSC	17	/* has invariant tsc */
+#define CPU_MAXID		18	/* number of valid machdep ids */
 
 #define	CTL_MACHDEP_NAMES { \
 	{ 0, 0 }, \
@@ -446,6 +447,8 @@ void mp_setperf_init(void);
 	{ 0, 0 }, \
 	{ "lidaction", CTLTYPE_INT }, \
 	{ "forceukbd", CTLTYPE_INT }, \
+	{ "tscfreq", CTLTYPE_QUAD }, \
+	{ "invarianttsc", CTLTYPE_INT }, \
 }
 
 /*
