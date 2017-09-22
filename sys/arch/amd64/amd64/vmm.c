@@ -668,11 +668,13 @@ vm_rwvmmparams(struct vm_rwvmmparams_params *vpp, int dir) {
 	struct vcpu *vcpu;
 	struct cpu_info *ci;
 	int error;
+	extern uint64_t amd64_tsc_frequency;
 
 	if (dir == 0) {
 		ci = curcpu();
 		vpp->vpp_tsc_base = rdtsc();
-		vpp->vpp_tsc_freq = ci->ci_tsc_freq;
+		vpp->vpp_tsc_freq = amd64_tsc_frequency;
+		printf("freq: %llu", amd64_tsc_frequency);
 		return (0);
 	}
 
