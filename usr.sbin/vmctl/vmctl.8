@@ -62,8 +62,6 @@ Load additional configuration from the specified file.
 Disable verbose debug logging.
 .It Cm log verbose
 Enable verbose debug logging.
-.It Cm pause Ar id
-Pause a VM with the specified
 .Ar id .
 .It Cm receive Ar name
 Receive a VM from standard input and start it with the specified
@@ -142,8 +140,6 @@ A graceful shutdown will be attempted if the VM supports the
 device.
 Once stopped, if the VM was not defined in a configuration file, then it is
 removed.
-.It Cm unpause Ar id
-Unpause (resume from a paused state) a VM with the specified
 .Ar id .
 .El
 .Pp

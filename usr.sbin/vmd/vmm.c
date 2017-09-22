@@ -223,33 +223,6 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 			    -1, &verbose, sizeof(verbose));
 		}
 		break;
-	case IMSG_VMDOP_PAUSE_VM:
-		IMSG_SIZE_CHECK(imsg, &vid);
-		memcpy(&vid, imsg->data, sizeof(vid));
-		id = vid.vid_id;
-		vm = vm_getbyvmid(id);
-		if ((vm = vm_getbyvmid(id)) == NULL) {
-			res = ENOENT;
-			cmd = IMSG_VMDOP_PAUSE_VM_RESPONSE;
-			break;
-		}
-		imsg_compose_event(&vm->vm_iev,
-		    imsg->hdr.type, imsg->hdr.peerid, imsg->hdr.pid,
-		    imsg->fd, &vid, sizeof(vid));
-		break;
-	case IMSG_VMDOP_UNPAUSE_VM:
-		IMSG_SIZE_CHECK(imsg, &vid);
-		memcpy(&vid, imsg->data, sizeof(vid));
-		id = vid.vid_id;
-		if ((vm = vm_getbyvmid(id)) == NULL) {
-			res = ENOENT;
-			cmd = IMSG_VMDOP_UNPAUSE_VM_RESPONSE;
-			break;
-		}
-		imsg_compose_event(&vm->vm_iev,
-		    imsg->hdr.type, imsg->hdr.peerid, imsg->hdr.pid,
-		    imsg->fd, &vid, sizeof(vid));
-		break;
 	case IMSG_VMDOP_SEND_VM_REQUEST:
 		IMSG_SIZE_CHECK(imsg, &vid);
 		memcpy(&vid, imsg->data, sizeof(vid));
@@ -303,8 +276,6 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		}
 		if (id == 0)
 			id = imsg->hdr.peerid;
-	case IMSG_VMDOP_PAUSE_VM_RESPONSE:
-	case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
 	case IMSG_VMDOP_TERMINATE_VM_RESPONSE:
 		memset(&vmr, 0, sizeof(vmr));
 		vmr.vmr_result = res;
@@ -494,8 +465,6 @@ vmm_dispatch_vm(int fd, short event, void *arg)
 				log_debug("%s: calling vm_remove", __func__);
 				vm_remove(vm);
 			}
-		case IMSG_VMDOP_PAUSE_VM_RESPONSE:
-		case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
 			for (i = 0; i < sizeof(procs); i++) {
 				if (procs[i].p_id == PROC_PARENT) {
 					proc_forward_imsg(procs[i].p_ps,

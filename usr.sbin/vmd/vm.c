@@ -423,24 +423,6 @@ vm_dispatch_vmm(int fd, short event, void *arg)
 			if (vmmci_ctl(VMMCI_REBOOT) == -1)
 				_exit(0);
 			break;
-		case IMSG_VMDOP_PAUSE_VM:
-			vmr.vmr_result = 0;
-			vmr.vmr_id = vm->vm_vmid;
-			pause_vm(&vm->vm_params.vmc_params);
-			imsg_compose_event(&vm->vm_iev,
-			    IMSG_VMDOP_PAUSE_VM_RESPONSE,
-			    imsg.hdr.peerid, imsg.hdr.pid, -1, &vmr,
-			    sizeof(vmr));
-			break;
-		case IMSG_VMDOP_UNPAUSE_VM:
-			vmr.vmr_result = 0;
-			vmr.vmr_id = vm->vm_vmid;
-			unpause_vm(&vm->vm_params.vmc_params);
-			imsg_compose_event(&vm->vm_iev,
-			    IMSG_VMDOP_UNPAUSE_VM_RESPONSE,
-			    imsg.hdr.peerid, imsg.hdr.pid, -1, &vmr,
-			    sizeof(vmr));
-			break;
 		case IMSG_VMDOP_SEND_VM_REQUEST:
 			vmr.vmr_id = vm->vm_vmid;
 			vmr.vmr_result = send_vm(imsg.fd,

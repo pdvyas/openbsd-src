@@ -84,10 +84,8 @@ control_dispatch_vmd(int fd, struct privsep_proc *p, struct imsg *imsg)
 
 	switch (imsg->hdr.type) {
 	case IMSG_VMDOP_START_VM_RESPONSE:
-	case IMSG_VMDOP_PAUSE_VM_RESPONSE:
 	case IMSG_VMDOP_SEND_VM_RESPONSE:
 	case IMSG_VMDOP_RECEIVE_VM_RESPONSE:
-	case IMSG_VMDOP_UNPAUSE_VM_RESPONSE:
 	case IMSG_VMDOP_TERMINATE_VM_RESPONSE:
 	case IMSG_VMDOP_GET_INFO_VM_DATA:
 	case IMSG_VMDOP_GET_INFO_VM_END_DATA:
@@ -373,8 +371,6 @@ control_dispatch_imsg(int fd, short event, void *arg)
 			/* FALLTHROUGH */
 		case IMSG_VMDOP_RECEIVE_VM_REQUEST:
 		case IMSG_VMDOP_SEND_VM_REQUEST:
-		case IMSG_VMDOP_PAUSE_VM:
-		case IMSG_VMDOP_UNPAUSE_VM:
 		case IMSG_VMDOP_LOAD:
 		case IMSG_VMDOP_RELOAD:
 		case IMSG_CTL_RESET:
