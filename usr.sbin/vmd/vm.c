@@ -85,6 +85,7 @@ int dump_vmr(int , struct vm_mem_range *);
 int dump_mem(int, struct vm_create_params *);
 void restore_vmr(int, struct vm_mem_range *);
 void restore_mem(int, struct vm_create_params *);
+void restore_tsc(int, struct vm_create_params *);
 void pause_vm(struct vm_create_params *);
 void unpause_vm(struct vm_create_params *);
 
@@ -356,6 +357,7 @@ start_vm(struct vmd_vm *vm, int fd)
 		    vm->vm_disks);
 		mc146818_start();
 		restore_mem(vm->vm_receive_fd, vcp);
+		restore_tsc(vm->vm_receive_fd, vcp);
 	}
 
 	if (vmm_pipe(vm, fd, vm_dispatch_vmm) == -1)
@@ -490,6 +492,7 @@ int
 send_vm(int fd, struct vm_create_params *vcp)
 {
 	struct vm_rwregs_params	   vrp;
+	struct vm_rwvmmparams_params vpp;
 	struct vmop_create_params *vmc;
 	struct vm_terminate_params vtp;
 	unsigned int		   flags = 0;
@@ -555,6 +558,17 @@ send_vm(int fd, struct vm_create_params *vcp)
 	if ((ret = dump_mem(fd, vcp)))
 		goto err;
 
+	if (ioctl(env->vmd_fd, VMM_IOC_READVMMPARAMS, &vpp) < 0) {
+		ret = errno;
+		log_debug("read tsc failed");
+		goto err;
+	}
+
+	if ((ret = atomicio(vwrite, fd, &vpp,
+	    sizeof(struct vm_rwvmmparams_params)) !=
+	    sizeof(struct vm_rwvmmparams_params)))
+		goto err;
+
 	vtp.vtp_vm_id = vcp->vcp_id;
 	if (ioctl(env->vmd_fd, VMM_IOC_TERM, &vtp) < 0) {
 		log_warnx("%s: term IOC error: %d, %d", __func__,
@@ -618,6 +632,19 @@ dump_mem(int fd, struct vm_create_params *vcp)
 			return ret;
 	}
 	return (0);
+}
+
+// TODO: rename to restore vmm params
+void
+restore_tsc(int fd, struct vm_create_params *vcp) {
+	struct vm_rwvmmparams_params vpp;
+	if (atomicio(read, fd, &vpp, sizeof(vpp)) != sizeof(vpp)) {
+		log_debug("error restoring tsc");
+	}
+	vpp.vpp_vm_id = vcp->vcp_id;
+	if (ioctl(env->vmd_fd, VMM_IOC_WRITEVMMPARAMS, &vpp) < 0) {
+		log_debug("write tsc failed");
+	}
 }
 
 void

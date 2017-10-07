@@ -121,6 +121,7 @@ int vm_get_info(struct vm_info_params *);
 int vm_resetcpu(struct vm_resetcpu_params *);
 int vm_intr_pending(struct vm_intr_params *);
 int vm_rwregs(struct vm_rwregs_params *, int);
+int vm_rwvmmparams(struct vm_rwvmmparams_params *, int);
 int vm_find(uint32_t, struct vm **);
 int vcpu_readregs_vmx(struct vcpu *, uint64_t, struct vcpu_reg_state *);
 int vcpu_readregs_svm(struct vcpu *, uint64_t, struct vcpu_reg_state *);
@@ -157,6 +158,7 @@ int vmm_handle_xsetbv(struct vcpu *, uint64_t *);
 int vmx_handle_xsetbv(struct vcpu *);
 int svm_handle_xsetbv(struct vcpu *);
 int vmm_handle_cpuid(struct vcpu *);
+int vmx_handle_rdtsc(struct vcpu *);
 int vmx_handle_rdmsr(struct vcpu *);
 int vmx_handle_wrmsr(struct vcpu *);
 int vmx_handle_cr0_write(struct vcpu *, uint64_t);
@@ -194,6 +196,8 @@ void vmx_setmsrbw(struct vcpu *, uint32_t);
 void vmx_setmsrbrw(struct vcpu *, uint32_t);
 void svm_set_clean(struct vcpu *, uint32_t);
 void svm_set_dirty(struct vcpu *, uint32_t);
+
+uint64_t vmm_guest_rdtsc(struct vcpu *);
 
 #ifdef VMM_DEBUG
 void dump_vcpu(struct vcpu *);
@@ -458,6 +462,13 @@ vmmioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
 	case VMM_IOC_WRITEREGS:
 		ret = vm_rwregs((struct vm_rwregs_params *)data, 1);
 		break;
+	case VMM_IOC_READVMMPARAMS:
+		ret = vm_rwvmmparams((struct vm_rwvmmparams_params *)data, 0);
+		break;
+	case VMM_IOC_WRITEVMMPARAMS:
+		ret = vm_rwvmmparams((struct vm_rwvmmparams_params *)data, 1);
+		break;
+
 	default:
 		DPRINTF("%s: unknown ioctl code 0x%lx\n", __func__, cmd);
 		ret = ENOTTY;
@@ -489,6 +500,8 @@ pledge_ioctl_vmm(struct proc *p, long com)
 	case VMM_IOC_INTR:
 	case VMM_IOC_READREGS:
 	case VMM_IOC_WRITEREGS:
+	case VMM_IOC_READVMMPARAMS:
+	case VMM_IOC_WRITEVMMPARAMS:
 		return (0);
 	}
 
@@ -637,6 +650,59 @@ vm_intr_pending(struct vm_intr_params *vip)
 #endif /* MULTIPROCESSOR */
 
 	return (0);
+}
+
+/*
+ * vm_rwvmmparams
+ *
+ * IOCTL handler to read/write the current vmm params like tsc value and
+ * tsc frequency of a guest VCPU.
+ *
+ * Parameters:
+ *   vrwp: Describes the VM and VCPU to get/set the tsc info from.
+ *   dir: 0 for reading, 1 for writing
+ *
+ * Return values:
+ *  0: if successful
+ *  ENOENT: if the VM/VCPU defined by 'vgp' cannot be found
+ *  EINVAL: if an error occured reading the registers of the guest
+ */
+int
+vm_rwvmmparams(struct vm_rwvmmparams_params *vpp, int dir) {
+	struct vm *vm;
+	struct vcpu *vcpu;
+	int error;
+	extern uint64_t tsc_frequency;
+
+	/* Find the desired VM */
+	rw_enter_read(&vmm_softc->vm_lock);
+	error = vm_find(vpp->vpp_vm_id, &vm);
+
+	/* Not found? exit. */
+	if (error != 0) {
+		rw_exit_read(&vmm_softc->vm_lock);
+		return (error);
+	}
+
+	rw_enter_read(&vm->vm_vcpu_lock);
+	SLIST_FOREACH(vcpu, &vm->vm_vcpu_list, vc_vcpu_link) {
+		if (vcpu->vc_id == vpp->vpp_vcpu_id)
+			break;
+	}
+	rw_exit_read(&vm->vm_vcpu_lock);
+	rw_exit_read(&vmm_softc->vm_lock);
+
+	if (dir == 0) {
+		vpp->vpp_tsc_base = vmm_guest_rdtsc(vcpu);
+		vpp->vpp_tsc_freq = tsc_frequency;
+		printf("freq: %llu", tsc_frequency);
+		return (0);
+	}
+
+	vcpu->vc_tsc_offset = vpp->vpp_tsc_base - rdtsc();
+	vcpu->vc_tsc_scaling_factor = tsc_frequency / vpp->vpp_tsc_freq;
+	return (0);
+
 }
 
 /*
@@ -1090,6 +1156,8 @@ vm_create(struct vm_create_params *vcp, struct proc *p)
 		}
 		rw_enter_write(&vm->vm_vcpu_lock);
 		vcpu->vc_id = vm->vm_vcpu_ct;
+		vcpu->vc_tsc_offset = 0;
+		vcpu->vc_tsc_scaling_factor = 1;
 		vm->vm_vcpu_ct++;
 		SLIST_INSERT_HEAD(&vm->vm_vcpu_list, vcpu, vc_vcpu_link);
 		rw_exit_write(&vm->vm_vcpu_lock);
@@ -2152,6 +2220,7 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	 *
 	 * We must be able to set the following:
 	 * IA32_VMX_HLT_EXITING - exit on HLT instruction
+	 * IA32_VMX_RDTSC_EXITING - exit on RDTSC instruction
 	 * IA32_VMX_MWAIT_EXITING - exit on MWAIT instruction
 	 * IA32_VMX_UNCONDITIONAL_IO_EXITING - exit on I/O instructions
 	 * IA32_VMX_USE_MSR_BITMAPS - exit on various MSR accesses
@@ -2165,6 +2234,7 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	 * IA32_VMX_CR3_STORE_EXITING - don't care about guest CR3 accesses
 	 */
 	want1 = IA32_VMX_HLT_EXITING |
+	    IA32_VMX_RDTSC_EXITING |
 	    IA32_VMX_MWAIT_EXITING |
 	    IA32_VMX_UNCONDITIONAL_IO_EXITING |
 	    IA32_VMX_USE_MSR_BITMAPS |
@@ -4346,6 +4416,10 @@ vmx_handle_exit(struct vcpu *vcpu)
 		ret = vmx_handle_rdmsr(vcpu);
 		update_rip = 1;
 		break;
+	case VMX_EXIT_RDTSC:
+		ret = vmx_handle_rdtsc(vcpu);
+		update_rip = 1;
+		break;
 	case VMX_EXIT_WRMSR:
 		ret = vmx_handle_wrmsr(vcpu);
 		update_rip = 1;
@@ -5125,6 +5199,45 @@ vmx_handle_cr(struct vcpu *vcpu)
 	vcpu->vc_gueststate.vg_rip += insn_length;
 
 	return (0);
+}
+
+/*
+ * vmx_handle_rdtsc
+ *
+ * Parameters:
+ *  vcpu: vcpu structure containing instruction info causing the exit
+ *  rax: pointer to guest %rax
+ *
+ * Return value:
+ *  0: The operation was successful
+ *  EINVAL: An error occurred
+ */
+int
+vmx_handle_rdtsc(struct vcpu *vcpu)
+{
+	uint64_t insn_length;
+	uint64_t guest_tsc;
+
+	if (vmread(VMCS_INSTRUCTION_LENGTH, &insn_length)) {
+		printf("%s: can't obtain instruction length\n", __func__);
+		return (EINVAL);
+	}
+
+	/* RDTSC instruction is 0x0F 0x31 */
+	KASSERT(insn_length == 2);
+
+	guest_tsc = vmm_guest_rdtsc(vcpu);
+	vcpu->vc_gueststate.vg_rax = (guest_tsc << 32) >> 32;
+	vcpu->vc_gueststate.vg_rdx = guest_tsc >> 32;
+
+	vcpu->vc_gueststate.vg_rip += insn_length;
+
+	return (0);
+}
+
+uint64_t
+vmm_guest_rdtsc(struct vcpu *vcpu) {
+	return vcpu->vc_tsc_scaling_factor * rdtsc() + vcpu->vc_tsc_offset;
 }
 
 /*
