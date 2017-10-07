@@ -692,15 +692,27 @@ vm_rwvmmparams(struct vm_rwvmmparams_params *vpp, int dir) {
 	rw_exit_read(&vm->vm_vcpu_lock);
 	rw_exit_read(&vmm_softc->vm_lock);
 
+	if (vcpu == NULL)
+		return (ENOENT);
+
 	if (dir == 0) {
+		printf("printing freq\n");
+		printf("freq: %llu\n", tsc_frequency);
+		printf("setting tsc base\n");
+		printf("-- offset :\n");
+		printf("%llu", vcpu->vc_tsc_offset);
+		printf("-- scaling factor:\n");
+		printf("%llu", vcpu->vc_tsc_scaling_factor);
 		vpp->vpp_tsc_base = vmm_guest_rdtsc(vcpu);
+		printf("setting tsc freq\n");
 		vpp->vpp_tsc_freq = tsc_frequency;
-		printf("freq: %llu", tsc_frequency);
 		return (0);
 	}
 
 	vcpu->vc_tsc_offset = vpp->vpp_tsc_base - rdtsc();
+	printf("setting tsc offset: %llu\n", vcpu->vc_tsc_offset);
 	vcpu->vc_tsc_scaling_factor = tsc_frequency / vpp->vpp_tsc_freq;
+	printf("setting tsc scaling factor: %llu\n", vcpu->vc_tsc_scaling_factor);
 	return (0);
 
 }

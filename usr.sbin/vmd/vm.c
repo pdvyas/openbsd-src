@@ -520,6 +520,8 @@ send_vm(int fd, struct vm_create_params *vcp)
 	vmc->vmc_flags = flags;
 	vrp.vrwp_vm_id = vcp->vcp_id;
 	vrp.vrwp_mask = VM_RWREGS_ALL;
+	vpp.vpp_vm_id = vcp->vcp_id;
+	vpp.vpp_vcpu_id = 0;
 
 	sz = atomicio(vwrite, fd, vmc,sizeof(struct vmop_create_params));
 	if (sz != sizeof(struct vmop_create_params)) {
