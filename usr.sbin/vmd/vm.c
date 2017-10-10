@@ -85,7 +85,7 @@ int dump_vmr(int , struct vm_mem_range *);
 int dump_mem(int, struct vm_create_params *);
 void restore_vmr(int, struct vm_mem_range *);
 void restore_mem(int, struct vm_create_params *);
-void restore_tsc(int, struct vm_create_params *);
+void restore_vmm_params(int, struct vm_create_params *);
 void pause_vm(struct vm_create_params *);
 void unpause_vm(struct vm_create_params *);
 
@@ -357,7 +357,7 @@ start_vm(struct vmd_vm *vm, int fd)
 		    vm->vm_disks);
 		mc146818_start();
 		restore_mem(vm->vm_receive_fd, vcp);
-		restore_tsc(vm->vm_receive_fd, vcp);
+		restore_vmm_params(vm->vm_receive_fd, vcp);
 	}
 
 	if (vmm_pipe(vm, fd, vm_dispatch_vmm) == -1)
@@ -566,10 +566,22 @@ send_vm(int fd, struct vm_create_params *vcp)
 		goto err;
 	}
 
-	if ((ret = atomicio(vwrite, fd, &vpp,
-	    sizeof(struct vm_rwvmmparams_params)) !=
-	    sizeof(struct vm_rwvmmparams_params)))
-		goto err;
+
+	for (i = 0; i < vcp->vcp_ncpus; i++) {
+		vpp.vpp_vcpu_id = i;
+		if ((ret = ioctl(env->vmd_fd, VMM_IOC_READVMMPARAMS, &vpp))) {
+			log_warn("%s: readregs failed", __func__);
+			goto err;
+		}
+
+		sz = atomicio(vwrite, fd, &vpp,
+		    sizeof(struct vm_rwvmmparams_params));
+		if (sz != sizeof(struct vm_rwvmmparams_params)) {
+			log_warn("%s: dumping vmm params failed", __func__);
+			ret = -1;
+			goto err;
+		}
+	}
 
 	vtp.vtp_vm_id = vcp->vcp_id;
 	if (ioctl(env->vmd_fd, VMM_IOC_TERM, &vtp) < 0) {
@@ -636,17 +648,22 @@ dump_mem(int fd, struct vm_create_params *vcp)
 	return (0);
 }
 
-// TODO: rename to restore vmm params
 void
-restore_tsc(int fd, struct vm_create_params *vcp) {
-	struct vm_rwvmmparams_params vpp;
-	if (atomicio(read, fd, &vpp, sizeof(vpp)) != sizeof(vpp)) {
-		log_debug("error restoring tsc");
-	}
-	log_info("src tsc freq: %llu", vpp.vpp_tsc_freq);
-	vpp.vpp_vm_id = vcp->vcp_id;
-	if (ioctl(env->vmd_fd, VMM_IOC_WRITEVMMPARAMS, &vpp) < 0) {
-		log_debug("write tsc failed");
+restore_vmm_params(int fd, struct vm_create_params *vcp) {
+	unsigned int			i;
+	struct vm_rwvmmparams_params    vpp;
+
+	for (i = 0; i < vcp->vcp_ncpus; i++) {
+		if (atomicio(read, fd, &vpp, sizeof(vpp)) != sizeof(vpp)) {
+			log_debug("error restoring vmm params");
+		}
+		vpp.vpp_vm_id = vcp->vcp_id;
+		vpp.vpp_vcpu_id = i;
+		log_info("src tsc freq %d: %llu", i, vpp.vpp_tsc_freq);
+		log_info("src tsc base %d: %llu", i, vpp.vpp_tsc_base);
+		if (ioctl(env->vmd_fd, VMM_IOC_WRITEVMMPARAMS, &vpp) < 0) {
+			log_debug("writing vmm params failed");
+		}
 	}
 }
 
