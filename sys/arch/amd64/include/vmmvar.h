@@ -843,7 +843,7 @@ struct vcpu {
 	uint8_t vc_vmx_vpid_enabled;
 
 	int64_t vc_tsc_offset;
-	int64_t vc_tsc_scaling_factor;
+	double vc_tsc_scaling_factor;
 
 	/* SVM only */
 	vaddr_t vc_svm_hsa_va;

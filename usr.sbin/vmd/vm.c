@@ -643,6 +643,7 @@ restore_tsc(int fd, struct vm_create_params *vcp) {
 	if (atomicio(read, fd, &vpp, sizeof(vpp)) != sizeof(vpp)) {
 		log_debug("error restoring tsc");
 	}
+	log_info("src tsc freq: %llu", vpp.vpp_tsc_freq);
 	vpp.vpp_vm_id = vcp->vcp_id;
 	if (ioctl(env->vmd_fd, VMM_IOC_WRITEVMMPARAMS, &vpp) < 0) {
 		log_debug("write tsc failed");
