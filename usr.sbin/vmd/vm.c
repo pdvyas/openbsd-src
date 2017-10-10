@@ -521,7 +521,6 @@ send_vm(int fd, struct vm_create_params *vcp)
 	vrp.vrwp_vm_id = vcp->vcp_id;
 	vrp.vrwp_mask = VM_RWREGS_ALL;
 	vpp.vpp_vm_id = vcp->vcp_id;
-	vpp.vpp_vcpu_id = 0;
 
 	sz = atomicio(vwrite, fd, vmc,sizeof(struct vmop_create_params));
 	if (sz != sizeof(struct vmop_create_params)) {
@@ -655,14 +654,12 @@ restore_vmm_params(int fd, struct vm_create_params *vcp) {
 
 	for (i = 0; i < vcp->vcp_ncpus; i++) {
 		if (atomicio(read, fd, &vpp, sizeof(vpp)) != sizeof(vpp)) {
-			log_debug("error restoring vmm params");
+			log_warn("%s: error restoring vmm params", __func__);
 		}
 		vpp.vpp_vm_id = vcp->vcp_id;
 		vpp.vpp_vcpu_id = i;
-		log_info("src tsc freq %d: %llu", i, vpp.vpp_tsc_freq);
-		log_info("src tsc base %d: %llu", i, vpp.vpp_tsc_base);
 		if (ioctl(env->vmd_fd, VMM_IOC_WRITEVMMPARAMS, &vpp) < 0) {
-			log_debug("writing vmm params failed");
+			log_debug("%s: writing vmm params failed", __func__);
 		}
 	}
 }

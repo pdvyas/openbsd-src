@@ -696,23 +696,13 @@ vm_rwvmmparams(struct vm_rwvmmparams_params *vpp, int dir) {
 		return (ENOENT);
 
 	if (dir == 0) {
-		printf("printing freq\n");
-		printf("freq: %llu\n", tsc_frequency);
-		printf("setting tsc base\n");
-		printf("-- offset :\n");
-		printf("%llu", vcpu->vc_tsc_offset);
-		printf("-- scaling factor:\n");
-		printf("%lf", vcpu->vc_tsc_scaling_factor);
 		vpp->vpp_tsc_base = vmm_guest_rdtsc(vcpu);
-		printf("setting tsc freq\n");
 		vpp->vpp_tsc_freq = vcpu->vc_tsc_scaling_factor * tsc_frequency;
 		return (0);
 	}
 
 	vcpu->vc_tsc_scaling_factor = (double)vpp->vpp_tsc_freq / tsc_frequency;
-	printf("setting tsc scaling factor: %f\n", vcpu->vc_tsc_scaling_factor);
 	vcpu->vc_tsc_offset = vpp->vpp_tsc_base - rdtsc() * vcpu->vc_tsc_scaling_factor;
-	printf("setting tsc offset: %lld\n", vcpu->vc_tsc_offset);
 	return (0);
 
 }
@@ -5239,7 +5229,7 @@ vmx_handle_rdtsc(struct vcpu *vcpu)
 	KASSERT(insn_length == 2);
 
 	guest_tsc = vmm_guest_rdtsc(vcpu);
-	vcpu->vc_gueststate.vg_rax = (guest_tsc << 32) >> 32;
+	vcpu->vc_gueststate.vg_rax = guest_tsc & 0x00000000ffffffff;
 	vcpu->vc_gueststate.vg_rdx = guest_tsc >> 32;
 
 	vcpu->vc_gueststate.vg_rip += insn_length;
