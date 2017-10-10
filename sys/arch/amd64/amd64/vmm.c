@@ -699,14 +699,17 @@ vm_rwvmmparams(struct vm_rwvmmparams_params *vpp, int dir) {
 		if (vpp->vpp_mask & VM_RWVMMPARAMS_TSC_BASE)
 			vpp->vpp_tsc_base = vmm_guest_rdtsc(vcpu);
 		if (vpp->vpp_mask & VM_RWVMMPARAMS_TSC_FREQ)
-			vpp->vpp_tsc_freq = vcpu->vc_tsc_scaling_factor * tsc_frequency;
+			vpp->vpp_tsc_freq = vcpu->vc_tsc_scaling_factor \
+			    * tsc_frequency;
 		return (0);
 	}
 
 	if (vpp->vpp_mask & VM_RWVMMPARAMS_TSC_FREQ)
-		vcpu->vc_tsc_scaling_factor = (double)vpp->vpp_tsc_freq / tsc_frequency;
+		vcpu->vc_tsc_scaling_factor = (double)vpp->vpp_tsc_freq / \
+		    tsc_frequency;
 	if (vpp->vpp_mask & VM_RWVMMPARAMS_TSC_BASE)
-		vcpu->vc_tsc_offset = vpp->vpp_tsc_base - rdtsc() * vcpu->vc_tsc_scaling_factor;
+		vcpu->vc_tsc_offset = vpp->vpp_tsc_base - rdtsc() * \
+		    vcpu->vc_tsc_scaling_factor;
 	return (0);
 
 }
