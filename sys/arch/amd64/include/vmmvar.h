@@ -481,10 +481,15 @@ struct vm_intr_params {
 	uint16_t		vip_intr;
 };
 
+#define VM_RWVMMPARAMS_TSC_FREQ	0x1	/* read/write TSC frequency */
+#define VM_RWVMMPARAMS_TSC_BASE	0x2	/* read/write TSC base */
+#define VM_RWVMMPARAMS_ALL	(VM_RWVMMPARAMS_TSC_FREQ | VM_RWVMMPARAMS_TSC_BASE)
+
 struct vm_rwvmmparams_params {
 	/* Input parameters to VMM_IOC_INTR */
 	uint32_t		vpp_vm_id;
 	uint32_t		vpp_vcpu_id;
+	uint32_t		vpp_mask;
 	uint64_t		vpp_tsc_base;
 	uint64_t		vpp_tsc_freq;
 };

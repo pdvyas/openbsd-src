@@ -85,7 +85,7 @@ int dump_vmr(int , struct vm_mem_range *);
 int dump_mem(int, struct vm_create_params *);
 void restore_vmr(int, struct vm_mem_range *);
 void restore_mem(int, struct vm_create_params *);
-void restore_vmm_params(int, struct vm_create_params *);
+int restore_vmm_params(int, struct vm_create_params *);
 void pause_vm(struct vm_create_params *);
 void unpause_vm(struct vm_create_params *);
 
@@ -357,7 +357,8 @@ start_vm(struct vmd_vm *vm, int fd)
 		    vm->vm_disks);
 		mc146818_start();
 		restore_mem(vm->vm_receive_fd, vcp);
-		restore_vmm_params(vm->vm_receive_fd, vcp);
+		if (restore_vmm_params(vm->vm_receive_fd, vcp))
+			fatal("restore vmm params failed");
 	}
 
 	if (vmm_pipe(vm, fd, vm_dispatch_vmm) == -1)
@@ -520,6 +521,7 @@ send_vm(int fd, struct vm_create_params *vcp)
 	vmc->vmc_flags = flags;
 	vrp.vrwp_vm_id = vcp->vcp_id;
 	vrp.vrwp_mask = VM_RWREGS_ALL;
+	vpp.vpp_mask = VM_RWVMMPARAMS_ALL;
 	vpp.vpp_vm_id = vcp->vcp_id;
 
 	sz = atomicio(vwrite, fd, vmc,sizeof(struct vmop_create_params));
@@ -558,13 +560,6 @@ send_vm(int fd, struct vm_create_params *vcp)
 		goto err;
 	if ((ret = dump_mem(fd, vcp)))
 		goto err;
-
-	if (ioctl(env->vmd_fd, VMM_IOC_READVMMPARAMS, &vpp) < 0) {
-		ret = errno;
-		log_debug("read tsc failed");
-		goto err;
-	}
-
 
 	for (i = 0; i < vcp->vcp_ncpus; i++) {
 		vpp.vpp_vcpu_id = i;
@@ -647,7 +642,7 @@ dump_mem(int fd, struct vm_create_params *vcp)
 	return (0);
 }
 
-void
+int
 restore_vmm_params(int fd, struct vm_create_params *vcp) {
 	unsigned int			i;
 	struct vm_rwvmmparams_params    vpp;
@@ -655,13 +650,16 @@ restore_vmm_params(int fd, struct vm_create_params *vcp) {
 	for (i = 0; i < vcp->vcp_ncpus; i++) {
 		if (atomicio(read, fd, &vpp, sizeof(vpp)) != sizeof(vpp)) {
 			log_warn("%s: error restoring vmm params", __func__);
+			return (-1);
 		}
 		vpp.vpp_vm_id = vcp->vcp_id;
 		vpp.vpp_vcpu_id = i;
 		if (ioctl(env->vmd_fd, VMM_IOC_WRITEVMMPARAMS, &vpp) < 0) {
 			log_debug("%s: writing vmm params failed", __func__);
+			return (-1);
 		}
 	}
+	return (0);
 }
 
 void
