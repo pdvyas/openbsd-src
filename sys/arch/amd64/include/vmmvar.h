@@ -487,7 +487,7 @@ struct vm_intr_params {
     VM_RWVMMPARAMS_TSC_BASE)
 
 struct vm_rwvmmparams_params {
-	/* Input parameters to VMM_IOC_INTR */
+	/* Input parameters to VMM_IOC_READVMMPARAMS/VMM_IOC_WRITEVMMPARAMS */
 	uint32_t		vpp_vm_id;
 	uint32_t		vpp_vcpu_id;
 	uint32_t		vpp_mask;

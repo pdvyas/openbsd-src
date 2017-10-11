@@ -5213,9 +5213,11 @@ vmx_handle_cr(struct vcpu *vcpu)
 /*
  * vmx_handle_rdtsc
  *
+ * Handler for rdtsc instructions. We scale and offset the value of tsc if
+ * configured using VMM_IOC_WRITEVMMPARAMS.
+ *
  * Parameters:
  *  vcpu: vcpu structure containing instruction info causing the exit
- *  rax: pointer to guest %rax
  *
  * Return value:
  *  0: The operation was successful
@@ -5245,7 +5247,8 @@ vmx_handle_rdtsc(struct vcpu *vcpu)
 }
 
 uint64_t
-vmm_guest_rdtsc(struct vcpu *vcpu) {
+vmm_guest_rdtsc(struct vcpu *vcpu)
+{
 	return vcpu->vc_tsc_scaling_factor * rdtsc() + vcpu->vc_tsc_offset;
 }
 
