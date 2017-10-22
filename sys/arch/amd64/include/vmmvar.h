@@ -481,13 +481,13 @@ struct vm_intr_params {
 	uint16_t		vip_intr;
 };
 
-#define VM_RWVMMPARAMS_TSC_FREQ	0x1	/* read/write TSC frequency */
-#define VM_RWVMMPARAMS_TSC_BASE	0x2	/* read/write TSC base */
-#define VM_RWVMMPARAMS_ALL	(VM_RWVMMPARAMS_TSC_FREQ | \
-    VM_RWVMMPARAMS_TSC_BASE)
+#define VM_RWVMPARAMS_TSC_FREQ	0x1	/* read/write TSC frequency */
+#define VM_RWVMPARAMS_TSC_BASE	0x2	/* read/write TSC base */
+#define VM_RWVMPARAMS_ALL	(VM_RWVMPARAMS_TSC_FREQ | \
+    VM_RWVMPARAMS_TSC_BASE)
 
-struct vm_rwvmmparams_params {
-	/* Input parameters to VMM_IOC_READVMMPARAMS/VMM_IOC_WRITEVMMPARAMS */
+struct vm_rwvmparams_params {
+	/* Input parameters to VMM_IOC_READVMPARAMS/VMM_IOC_WRITEVMPARAMS */
 	uint32_t		vpp_vm_id;
 	uint32_t		vpp_vcpu_id;
 	uint32_t		vpp_mask;
@@ -519,9 +519,9 @@ struct vm_rwregs_params {
 #define VMM_IOC_READREGS _IOWR('V', 7, struct vm_rwregs_params) /* Get registers */
 #define VMM_IOC_WRITEREGS _IOW('V', 8, struct vm_rwregs_params) /* Set registers */
 /* Get VMM params */
-#define VMM_IOC_READVMMPARAMS _IOWR('V', 9, struct vm_rwvmmparams_params)
+#define VMM_IOC_READVMPARAMS _IOWR('V', 9, struct vm_rwvmparams_params)
 /* Set VMM params */
-#define VMM_IOC_WRITEVMMPARAMS _IOW('V', 10, struct vm_rwvmmparams_params)
+#define VMM_IOC_WRITEVMPARAMS _IOW('V', 10, struct vm_rwvmparams_params)
 
 
 /* CPUID masks */

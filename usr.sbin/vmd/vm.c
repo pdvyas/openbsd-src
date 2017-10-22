@@ -493,7 +493,7 @@ int
 send_vm(int fd, struct vm_create_params *vcp)
 {
 	struct vm_rwregs_params	   vrp;
-	struct vm_rwvmmparams_params vpp;
+	struct vm_rwvmparams_params vpp;
 	struct vmop_create_params *vmc;
 	struct vm_terminate_params vtp;
 	unsigned int		   flags = 0;
@@ -521,7 +521,7 @@ send_vm(int fd, struct vm_create_params *vcp)
 	vmc->vmc_flags = flags;
 	vrp.vrwp_vm_id = vcp->vcp_id;
 	vrp.vrwp_mask = VM_RWREGS_ALL;
-	vpp.vpp_mask = VM_RWVMMPARAMS_ALL;
+	vpp.vpp_mask = VM_RWVMPARAMS_ALL;
 	vpp.vpp_vm_id = vcp->vcp_id;
 
 	sz = atomicio(vwrite, fd, vmc,sizeof(struct vmop_create_params));
@@ -563,14 +563,14 @@ send_vm(int fd, struct vm_create_params *vcp)
 
 	for (i = 0; i < vcp->vcp_ncpus; i++) {
 		vpp.vpp_vcpu_id = i;
-		if ((ret = ioctl(env->vmd_fd, VMM_IOC_READVMMPARAMS, &vpp))) {
+		if ((ret = ioctl(env->vmd_fd, VMM_IOC_READVMPARAMS, &vpp))) {
 			log_warn("%s: readregs failed", __func__);
 			goto err;
 		}
 
 		sz = atomicio(vwrite, fd, &vpp,
-		    sizeof(struct vm_rwvmmparams_params));
-		if (sz != sizeof(struct vm_rwvmmparams_params)) {
+		    sizeof(struct vm_rwvmparams_params));
+		if (sz != sizeof(struct vm_rwvmparams_params)) {
 			log_warn("%s: dumping vmm params failed", __func__);
 			ret = -1;
 			goto err;
@@ -645,7 +645,7 @@ dump_mem(int fd, struct vm_create_params *vcp)
 int
 restore_vmm_params(int fd, struct vm_create_params *vcp) {
 	unsigned int			i;
-	struct vm_rwvmmparams_params    vpp;
+	struct vm_rwvmparams_params    vpp;
 
 	for (i = 0; i < vcp->vcp_ncpus; i++) {
 		if (atomicio(read, fd, &vpp, sizeof(vpp)) != sizeof(vpp)) {
@@ -654,7 +654,7 @@ restore_vmm_params(int fd, struct vm_create_params *vcp) {
 		}
 		vpp.vpp_vm_id = vcp->vcp_id;
 		vpp.vpp_vcpu_id = i;
-		if (ioctl(env->vmd_fd, VMM_IOC_WRITEVMMPARAMS, &vpp) < 0) {
+		if (ioctl(env->vmd_fd, VMM_IOC_WRITEVMPARAMS, &vpp) < 0) {
 			log_debug("%s: writing vmm params failed", __func__);
 			return (-1);
 		}

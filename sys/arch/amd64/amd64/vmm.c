@@ -121,7 +121,7 @@ int vm_get_info(struct vm_info_params *);
 int vm_resetcpu(struct vm_resetcpu_params *);
 int vm_intr_pending(struct vm_intr_params *);
 int vm_rwregs(struct vm_rwregs_params *, int);
-int vm_rwvmmparams(struct vm_rwvmmparams_params *, int);
+int vm_rwvmparams(struct vm_rwvmparams_params *, int);
 int vm_find(uint32_t, struct vm **);
 int vcpu_readregs_vmx(struct vcpu *, uint64_t, struct vcpu_reg_state *);
 int vcpu_readregs_svm(struct vcpu *, uint64_t, struct vcpu_reg_state *);
@@ -462,11 +462,11 @@ vmmioctl(dev_t dev, u_long cmd, caddr_t data, int flag, struct proc *p)
 	case VMM_IOC_WRITEREGS:
 		ret = vm_rwregs((struct vm_rwregs_params *)data, 1);
 		break;
-	case VMM_IOC_READVMMPARAMS:
-		ret = vm_rwvmmparams((struct vm_rwvmmparams_params *)data, 0);
+	case VMM_IOC_READVMPARAMS:
+		ret = vm_rwvmparams((struct vm_rwvmparams_params *)data, 0);
 		break;
-	case VMM_IOC_WRITEVMMPARAMS:
-		ret = vm_rwvmmparams((struct vm_rwvmmparams_params *)data, 1);
+	case VMM_IOC_WRITEVMPARAMS:
+		ret = vm_rwvmparams((struct vm_rwvmparams_params *)data, 1);
 		break;
 
 	default:
@@ -500,8 +500,8 @@ pledge_ioctl_vmm(struct proc *p, long com)
 	case VMM_IOC_INTR:
 	case VMM_IOC_READREGS:
 	case VMM_IOC_WRITEREGS:
-	case VMM_IOC_READVMMPARAMS:
-	case VMM_IOC_WRITEVMMPARAMS:
+	case VMM_IOC_READVMPARAMS:
+	case VMM_IOC_WRITEVMPARAMS:
 		return (0);
 	}
 
@@ -653,7 +653,7 @@ vm_intr_pending(struct vm_intr_params *vip)
 }
 
 /*
- * vm_rwvmmparams
+ * vm_rwvmparams
  *
  * IOCTL handler to read/write the current vmm params like tsc value and
  * tsc frequency of a guest VCPU.
@@ -668,7 +668,7 @@ vm_intr_pending(struct vm_intr_params *vip)
  *  EINVAL: if an error occured reading the registers of the guest
  */
 int
-vm_rwvmmparams(struct vm_rwvmmparams_params *vpp, int dir) {
+vm_rwvmparams(struct vm_rwvmparams_params *vpp, int dir) {
 	struct vm *vm;
 	struct vcpu *vcpu;
 	int error;
@@ -696,18 +696,18 @@ vm_rwvmmparams(struct vm_rwvmmparams_params *vpp, int dir) {
 		return (ENOENT);
 
 	if (dir == 0) {
-		if (vpp->vpp_mask & VM_RWVMMPARAMS_TSC_BASE)
+		if (vpp->vpp_mask & VM_RWVMPARAMS_TSC_BASE)
 			vpp->vpp_tsc_base = vmm_guest_rdtsc(vcpu);
-		if (vpp->vpp_mask & VM_RWVMMPARAMS_TSC_FREQ)
+		if (vpp->vpp_mask & VM_RWVMPARAMS_TSC_FREQ)
 			vpp->vpp_tsc_freq = vcpu->vc_tsc_scaling_factor \
 			    * tsc_frequency;
 		return (0);
 	}
 
-	if (vpp->vpp_mask & VM_RWVMMPARAMS_TSC_FREQ)
+	if (vpp->vpp_mask & VM_RWVMPARAMS_TSC_FREQ)
 		vcpu->vc_tsc_scaling_factor = (double)vpp->vpp_tsc_freq / \
 		    tsc_frequency;
-	if (vpp->vpp_mask & VM_RWVMMPARAMS_TSC_BASE)
+	if (vpp->vpp_mask & VM_RWVMPARAMS_TSC_BASE)
 		vcpu->vc_tsc_offset = vpp->vpp_tsc_base - rdtsc() * \
 		    vcpu->vc_tsc_scaling_factor;
 	return (0);
