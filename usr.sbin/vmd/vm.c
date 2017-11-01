@@ -492,7 +492,6 @@ send_vm(int fd, struct vm_create_params *vcp)
 	struct vm_rwregs_params	   vrp;
 	struct vmop_create_params *vmc;
 	struct vm_terminate_params vtp;
-	unsigned int		   flags = 0;
 	unsigned int		   i;
 	int			   ret = 0;
 	size_t			   sz; 
@@ -511,10 +510,9 @@ send_vm(int fd, struct vm_create_params *vcp)
 		goto err;
 	}
 
-	flags |= VMOP_CREATE_MEMORY;
-	memcpy(&vmc->vmc_params, &current_vm->vm_params, sizeof(struct
+	memcpy(vmc, &current_vm->vm_params, sizeof(struct
 	    vmop_create_params));
-	vmc->vmc_flags = flags;
+	clean_vmc(vmc);
 	vrp.vrwp_vm_id = vcp->vcp_id;
 	vrp.vrwp_mask = VM_RWREGS_ALL;
 

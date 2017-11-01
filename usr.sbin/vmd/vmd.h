@@ -315,6 +315,7 @@ void	 switch_remove(struct vmd_switch *);
 struct vmd_switch *switch_getbyname(const char *);
 char	*get_string(uint8_t *, size_t);
 uint32_t prefixlen2mask(uint8_t);
+void	 clean_vmc(struct vmop_create_params *);
 
 /* priv.c */
 void	 priv(struct privsep *, struct privsep_proc *);
