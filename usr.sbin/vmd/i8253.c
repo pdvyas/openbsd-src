@@ -341,8 +341,7 @@ i8253_fire(int fd, short type, void *arg)
 
 	vcpu_assert_pic_irq(ctr->vm_id, 0, 0);
 
-	/* if (ctr->mode != TIMER_INTTC) */
-		evtimer_add(&ctr->timer, &tv);
+	evtimer_add(&ctr->timer, &tv);
 }
 
 int
