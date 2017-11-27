@@ -750,9 +750,7 @@ vcpu_reset(uint32_t vmid, uint32_t vcpu_id, struct vcpu_reg_state *vrs)
 void
 create_memory_map(struct vm_create_params *vcp)
 {
-	size_t len, mem_bytes, mem_mb, next, gpa;
-	int i;
-	struct vm_mem_range *vmr;
+	size_t len, mem_bytes, mem_mb, next;
 
 	mem_mb = vcp->vcp_memranges[0].vmr_size;
 	vcp->vcp_nmemranges = 0;
