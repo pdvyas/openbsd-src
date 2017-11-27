@@ -1499,7 +1499,6 @@ vcpu_exit(struct vm_run_params *vrp)
 		}
 		break;
 	case VMX_EXIT_TRIPLE_FAULT:
-		fatal("TRIPLE FAULT");
 	case SVM_VMEXIT_SHUTDOWN:
 		/* reset VM */
 		return (EAGAIN);
