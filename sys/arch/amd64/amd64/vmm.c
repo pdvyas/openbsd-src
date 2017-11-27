@@ -41,7 +41,7 @@
 
 #include <dev/isa/isareg.h>
 
-/* #define VMM_DEBUG */
+#define VMM_DEBUG
 
 #ifdef VMM_DEBUG
 #define DPRINTF(x...)	do { printf(x); } while(0)
@@ -964,11 +964,13 @@ vm_create_check_mem_ranges(struct vm_create_params *vcp)
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
 
+		printf("Checking page aligned\n");
 		/* Only page-aligned addresses and sizes are permitted */
 		if ((vmr->vmr_gpa & PAGE_MASK) || (vmr->vmr_va & PAGE_MASK) ||
 		    (vmr->vmr_size & PAGE_MASK) || vmr->vmr_size == 0)
 			return (0);
 
+		printf("Checking max size\n");
 		/* Make sure that VMM_MAX_VM_MEM_SIZE is not exceeded */
 		if (vmr->vmr_gpa >= maxgpa ||
 		    vmr->vmr_size > maxgpa - vmr->vmr_gpa)
@@ -980,6 +982,7 @@ vm_create_check_mem_ranges(struct vm_create_params *vcp)
 		 * Calling uvm_share() when creating the VM will take care of
 		 * further checks.
 		 */
+		printf("Checking if address within procs\n");
 		if (vmr->vmr_va < VM_MIN_ADDRESS ||
 		    vmr->vmr_va >= VM_MAXUSER_ADDRESS ||
 		    vmr->vmr_size >= VM_MAXUSER_ADDRESS - vmr->vmr_va)
@@ -990,31 +993,38 @@ vm_create_check_mem_ranges(struct vm_create_params *vcp)
 		 * Disallow ranges that start inside the MMIO space:
 		 * [VMM_PCI_MMIO_BAR_BASE .. VMM_PCI_MMIO_BAR_END]
 		 */
-		if (vmr->vmr_gpa >= VMM_PCI_MMIO_BAR_BASE &&
-		    vmr->vmr_gpa <= VMM_PCI_MMIO_BAR_END)
-			return (0);
+
+		/* if (vmr->vmr_gpa >= VMM_PCI_MMIO_BAR_BASE && */
+		/*     vmr->vmr_gpa <= VMM_PCI_MMIO_BAR_END) */
+		/* 	return (0); */
+                /*  */
 
 		/*
 		 * ... and disallow ranges that end inside the MMIO space:
 		 * (VMM_PCI_MMIO_BAR_BASE .. VMM_PCI_MMIO_BAR_END]
 		 */
-		if (vmr->vmr_gpa + vmr->vmr_size > VMM_PCI_MMIO_BAR_BASE &&
-		    vmr->vmr_gpa + vmr->vmr_size <= VMM_PCI_MMIO_BAR_END)
-			return (0);
+		/* if (vmr->vmr_gpa + vmr->vmr_size > VMM_PCI_MMIO_BAR_BASE && */
+		/*     vmr->vmr_gpa + vmr->vmr_size <= VMM_PCI_MMIO_BAR_END) */
+		/* 	return (0); */
 
 		/*
 		 * Make sure that guest physcal memory ranges do not overlap
 		 * and that they are ascending.
 		 */
+		printf("Checking for overlap\n");
 		if (i > 0 && pvmr->vmr_gpa + pvmr->vmr_size > vmr->vmr_gpa)
 			return (0);
+		printf("ALLGOOD\n");
 
 		memsize += vmr->vmr_size;
 		pvmr = vmr;
 	}
 
-	if (memsize % (1024 * 1024) != 0)
-		return (0);
+	printf("MEMSIZE before MOD %zu\n", memsize);
+	/* if (memsize % (1024 * 1024) != 0) */
+	/* 	return (0); */
+	printf("ALLGOOD FINAl\n");
+
 	memsize /= 1024 * 1024;
 	return (memsize);
 }
@@ -1043,6 +1053,7 @@ vm_create(struct vm_create_params *vcp, struct proc *p)
 		return (EINVAL);
 
 	memsize = vm_create_check_mem_ranges(vcp);
+	printf("MEMSIZE: %zu\n", memsize);
 	if (memsize == 0)
 		return (EINVAL);
 
@@ -4635,9 +4646,10 @@ vmx_fault_page(struct vcpu *vcpu, paddr_t gpa)
 	ret = uvm_fault(vcpu->vc_parent->vm_map, gpa, fault_type,
 	    PROT_READ | PROT_WRITE | PROT_EXEC);
 
-	if (ret)
+	if (ret) {
 		printf("%s: uvm_fault returns %d, GPA=0x%llx, rip=0x%llx\n",
 		    __func__, ret, (uint64_t)gpa, vcpu->vc_gueststate.vg_rip);
+	}
 
 	return (ret);
 }
@@ -4668,6 +4680,7 @@ vmx_handle_np_fault(struct vcpu *vcpu)
 	default:
 		printf("unknown memory type %d for GPA 0x%llx\n",
 		    gpa_memtype, gpa);
+		vmx_vcpu_dump_regs(vcpu);
 		return (EINVAL);
 	}
 
@@ -5464,6 +5477,7 @@ vmm_handle_cpuid(struct vcpu *vcpu)
 	rdx = &vcpu->vc_gueststate.vg_rdx;
 	vcpu->vc_gueststate.vg_rip += insn_length;
 
+
 	/*
 	 * "CPUID leaves above 02H and below 80000000H are only visible when
 	 * IA32_MISC_ENABLE MSR has bit 22 set to its default value 0"
@@ -5510,7 +5524,7 @@ vmm_handle_cpuid(struct vcpu *vcpu)
 		break;
 	case 0x04: 	/* Deterministic cache info */
 		if (*rcx == 0) {
-			*rax = eax;
+			*rax = eax & 0x3FFFFFF;
 			*rbx = ebx;
 			*rcx = ecx;
 			*rdx = edx;

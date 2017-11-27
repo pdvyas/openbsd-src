@@ -521,6 +521,7 @@ uvm_fault(vm_map_t orig_map, vaddr_t vaddr, vm_fault_t fault_type,
 ReFault:
 	/* lookup and lock the maps */
 	if (uvmfault_lookup(&ufi, FALSE) == FALSE) {
+		printf("LOOKUP FAILED");
 		return (EFAULT);
 	}
 
@@ -576,6 +577,7 @@ ReFault:
 	 */
 	if (amap == NULL && uobj == NULL) {
 		uvmfault_unlockmaps(&ufi, FALSE);
+		printf("CASE 0 FAULT");
 		return (EFAULT);
 	}
 
@@ -1430,8 +1432,10 @@ uvmfault_lookup(struct uvm_faultinfo *ufi, boolean_t write_lock)
 	 */
 	while (1) {
 		if (ufi->orig_rvaddr < ufi->map->min_offset ||
-		    ufi->orig_rvaddr >= ufi->map->max_offset)
+		    ufi->orig_rvaddr >= ufi->map->max_offset) {
+			printf("RANGE ISSUE\n");
 			return(FALSE);
+		}
 
 		/* lock map */
 		if (write_lock) {
@@ -1444,6 +1448,7 @@ uvmfault_lookup(struct uvm_faultinfo *ufi, boolean_t write_lock)
 		if (!uvm_map_lookup_entry(ufi->map, ufi->orig_rvaddr, 
 		    &ufi->entry)) {
 			uvmfault_unlockmaps(ufi, write_lock);
+			printf("LOOKUP ENTRY ISSUE\n");
 			return(FALSE);
 		}
 

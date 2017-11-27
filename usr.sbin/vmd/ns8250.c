@@ -38,6 +38,7 @@ struct ns8250_dev com1_dev;
 
 static void com_rcv_event(int, short, void *);
 static void com_rcv(struct ns8250_dev *, uint32_t, uint32_t);
+void dump_regs();
 
 /*
  * ratelimit
@@ -201,7 +202,11 @@ vcpu_process_com_data(union vm_exit *vei, uint32_t vm_id, uint32_t vcpu_id)
 			com1_dev.regs.divlo = vei->vei.vei_data;
 			return 0xFF;
 		}
-
+		
+		if (vei->vei.vei_data == '\'') {
+			dump_regs();
+			__asm ("xchg %bx, %bx");
+		}
 		write(com1_dev.fd, &vei->vei.vei_data, 1);
 		com1_dev.byte_out++;
 

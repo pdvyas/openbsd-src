@@ -33,6 +33,7 @@
 #include <machine/psl.h>
 #include <machine/specialreg.h>
 #include <machine/vmmvar.h>
+#include <machine/vmparam.h>
 
 #include <net/if.h>
 
@@ -234,6 +235,88 @@ loadfile_bios(FILE *fp, struct vcpu_reg_state *vrs)
 	return (0);
 }
 
+size_t
+vm_create_check_mem_ranges(struct vm_create_params *vcp)
+{
+	size_t i, memsize = 0;
+	struct vm_mem_range *vmr, *pvmr;
+	const paddr_t maxgpa = (uint64_t)VMM_MAX_VM_MEM_SIZE * 1024 * 1024;
+
+	if (vcp->vcp_nmemranges == 0 ||
+	    vcp->vcp_nmemranges > VMM_MAX_MEM_RANGES)
+		return (0);
+	log_debug("total: %d", vcp->vcp_nmemranges);
+
+	for (i = 0; i < vcp->vcp_nmemranges; i++) {
+		vmr = &vcp->vcp_memranges[i];
+
+		/* Only page-aligned addresses and sizes are permitted */
+		if ((vmr->vmr_gpa & PAGE_MASK) || (vmr->vmr_va & PAGE_MASK) ||
+		    (vmr->vmr_size & PAGE_MASK) || vmr->vmr_size == 0) {
+			log_debug("FAILED Checking page aligned: %d", i);
+			return (0);
+		}
+
+		/* Make sure that VMM_MAX_VM_MEM_SIZE is not exceeded */
+		if (vmr->vmr_gpa >= maxgpa ||
+		    vmr->vmr_size > maxgpa - vmr->vmr_gpa) {
+			log_debug("FAILED max size: %d", i);
+			return (0);
+		}
+
+		/*
+		 * Make sure that all virtual addresses are within the address
+		 * space of the process and that they do not wrap around.
+		 * Calling uvm_share() when creating the VM will take care of
+		 * further checks.
+		 */
+		if (vmr->vmr_va < VM_MIN_ADDRESS ||
+		    vmr->vmr_va >= VM_MAXUSER_ADDRESS ||
+		    vmr->vmr_size >= VM_MAXUSER_ADDRESS - vmr->vmr_va) {
+			log_debug("FAILED address in procs: %d", i);
+			return (0);
+		}
+
+		/*
+		 * Specifying ranges within the PCI MMIO space is forbidden.
+		 * Disallow ranges that start inside the MMIO space:
+		 * [VMM_PCI_MMIO_BAR_BASE .. VMM_PCI_MMIO_BAR_END]
+		 */
+
+		/* if (vmr->vmr_gpa >= VMM_PCI_MMIO_BAR_BASE && */
+		/*     vmr->vmr_gpa <= VMM_PCI_MMIO_BAR_END) */
+		/* 	return (0); */
+                /*  */
+
+		/*
+		 * ... and disallow ranges that end inside the MMIO space:
+		 * (VMM_PCI_MMIO_BAR_BASE .. VMM_PCI_MMIO_BAR_END]
+		 */
+		/* if (vmr->vmr_gpa + vmr->vmr_size > VMM_PCI_MMIO_BAR_BASE && */
+		/*     vmr->vmr_gpa + vmr->vmr_size <= VMM_PCI_MMIO_BAR_END) */
+		/* 	return (0); */
+
+		/*
+		 * Make sure that guest physcal memory ranges do not overlap
+		 * and that they are ascending.
+		 */
+		if (i > 0 && pvmr->vmr_gpa + pvmr->vmr_size > vmr->vmr_gpa) {
+			log_debug("FAILED overlap: %d", i);
+			return (0);
+		}
+
+		memsize += vmr->vmr_size;
+		pvmr = vmr;
+	}
+
+	if (memsize % (1024 * 1024) != 0) {
+		printf("FAILED: memsize MOD %zu\n", memsize);
+	}
+
+	memsize /= 1024 * 1024;
+	return (memsize);
+}
+
 /*
  * start_vm
  *
@@ -276,6 +359,8 @@ start_vm(struct vmd_vm *vm, int fd)
 		create_memory_map(vcp);
 
 	ret = alloc_guest_mem(vcp);
+
+	vm_create_check_mem_ranges(vcp);
 
 	if (ret) {
 		errno = ret;
@@ -734,6 +819,7 @@ vcpu_reset(uint32_t vmid, uint32_t vcpu_id, struct vcpu_reg_state *vrs)
 	return (0);
 }
 
+
 /*
  * create_memory_map
  *
@@ -749,7 +835,9 @@ vcpu_reset(uint32_t vmid, uint32_t vcpu_id, struct vcpu_reg_state *vrs)
 void
 create_memory_map(struct vm_create_params *vcp)
 {
-	size_t len, mem_bytes, mem_mb;
+	size_t len, mem_bytes, mem_mb, next, gpa;
+	int i;
+	struct vm_mem_range *vmr;
 
 	mem_mb = vcp->vcp_memranges[0].vmr_size;
 	vcp->vcp_nmemranges = 0;
@@ -763,6 +851,7 @@ create_memory_map(struct vm_create_params *vcp)
 	vcp->vcp_memranges[0].vmr_gpa = 0x0;
 	vcp->vcp_memranges[0].vmr_size = len;
 	mem_bytes -= len;
+	log_debug("gpa: 0x%zx", vcp->vcp_memranges[0].vmr_gpa);
 
 	/*
 	 * Second memory region: LOWMEM_KB - 1MB.
@@ -777,6 +866,7 @@ create_memory_map(struct vm_create_params *vcp)
 	vcp->vcp_memranges[1].vmr_gpa = LOWMEM_KB * 1024;
 	vcp->vcp_memranges[1].vmr_size = len;
 	mem_bytes -= len;
+	log_debug("gpa: 0x%zx", vcp->vcp_memranges[1].vmr_gpa);
 
 	/* Make sure that we do not place physical memory into MMIO ranges. */
 	if (mem_bytes > VMM_PCI_MMIO_BAR_BASE - 0x100000)
@@ -787,15 +877,39 @@ create_memory_map(struct vm_create_params *vcp)
 	/* Third memory region: 1MB - (1MB + len) */
 	vcp->vcp_memranges[2].vmr_gpa = 0x100000;
 	vcp->vcp_memranges[2].vmr_size = len;
-	mem_bytes -= len;
+	log_debug("gpa: 0x%zx", vcp->vcp_memranges[2].vmr_gpa);
+
+
+	/* Fourth memory region: MMIO */
+	vcp->vcp_memranges[3].vmr_gpa = VMM_PCI_MMIO_BAR_BASE;
+	vcp->vcp_memranges[3].vmr_size = VMM_PCI_MMIO_BAR_END - VMM_PCI_MMIO_BAR_BASE + 1;
+	log_debug("gpa: 0x%zx", vcp->vcp_memranges[3].vmr_gpa);
 
 	if (mem_bytes > 0) {
-		/* Fourth memory region for the remaining memory (if any) */
-		vcp->vcp_memranges[3].vmr_gpa = VMM_PCI_MMIO_BAR_END + 1;
-		vcp->vcp_memranges[3].vmr_size = mem_bytes;
-		vcp->vcp_nmemranges = 4;
+		/* Fifth memory region for the remaining memory (if any) */
+		vcp->vcp_memranges[4].vmr_gpa = VMM_PCI_MMIO_BAR_END + 1;
+		vcp->vcp_memranges[4].vmr_size = mem_bytes;
+		vcp->vcp_nmemranges = 5;
+		log_debug("gpa: 0x%zx", vcp->vcp_memranges[4].vmr_gpa);
 	} else
-		vcp->vcp_nmemranges = 3;
+		vcp->vcp_nmemranges = 4;
+
+	gpa = 0x10fff6000;
+        for (i = 0; i < vcp->vcp_nmemranges; i++) {
+                vmr = &vcp->vcp_memranges[i];
+
+                /*
+                 * vm_memranges are ascending. gpa can no longer be in one of
+                 * the memranges
+                 */
+                if (gpa < vmr->vmr_gpa)
+                        break;
+
+                if (gpa < vmr->vmr_gpa + vmr->vmr_size)
+			log_debug("FOUND IT %d", i);
+        }
+
+
 }
 
 /*
@@ -829,6 +943,7 @@ alloc_guest_mem(struct vm_create_params *vcp)
 
 	for (i = 0; i < vcp->vcp_nmemranges; i++) {
 		vmr = &vcp->vcp_memranges[i];
+		log_debug("size: %d", vmr->vmr_size);
 		p = mmap(NULL, vmr->vmr_size, PROT_READ | PROT_WRITE,
 		    MAP_PRIVATE | MAP_ANON, -1, 0);
 		if (p == MAP_FAILED) {
@@ -1492,6 +1607,7 @@ vcpu_exit(struct vm_run_params *vrp)
 		}
 		break;
 	case VMX_EXIT_TRIPLE_FAULT:
+		fatal("TRIPLE FAULT");
 	case SVM_VMEXIT_SHUTDOWN:
 		/* reset VM */
 		return (EAGAIN);
@@ -1904,4 +2020,17 @@ get_input_data(union vm_exit *vei, uint32_t *data)
 		    vei->vei.vei_size);
 	}
 
+}
+
+void dump_regs() {
+	struct vm_rwregs_params	   vrp;
+	struct vm_create_params *vcp = &current_vm->vm_params.vmc_params;
+	vrp.vrwp_vm_id = vcp->vcp_id;
+	vrp.vrwp_mask = VM_RWREGS_ALL;
+	vrp.vrwp_vcpu_id = 0;
+	log_debug("aya");
+	if ((ioctl(env->vmd_fd, VMM_IOC_READREGS, &vrp))) {
+		log_warn("%s: readregs failed", __func__);
+	}
+	log_info("VCPU_REGS_RIP    : 0x%016llx", vrp.vrwp_regs.vrs_gprs[VCPU_REGS_RIP]);
 }

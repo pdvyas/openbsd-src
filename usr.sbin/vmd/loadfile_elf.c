@@ -132,6 +132,46 @@ static void mbcopy(void *, paddr_t, int);
 extern char *__progname;
 extern int vm_id;
 
+struct btinfo_common {
+        int len;
+        int type;
+};
+
+#define BTINFO_CONSOLE          6
+struct btinfo_console {
+        struct btinfo_common common;
+        char devname[16];
+        int addr;
+        int speed;
+};
+
+struct bi_memmap_entry {
+        uint64_t addr;          /* beginning of block */        /* 8 */
+        uint64_t size;          /* size of block */             /* 8 */
+        uint32_t type;          /* type of block */             /* 4 */
+} __packed;                     /*      == 20 */
+
+#define BIM_Memory      1       /* available RAM usable by OS */
+#define BIM_Reserved    2       /* in use or reserved by the system */
+#define BIM_ACPI        3       /* ACPI Reclaim memory */
+#define BIM_NVS         4       /* ACPI NVS memory */
+
+#define BTINFO_MEMMAP           9
+struct btinfo_memmap {
+        struct btinfo_common common;
+        int num;
+        struct bi_memmap_entry entry[1]; /* var len */
+};
+
+#define BOOTINFO_MAXSIZE 4096
+
+struct bootinfo {
+        /* Number of bootinfo_* entries in bi_data. */
+        uint32_t        bi_nentries;
+        uint32_t        entry[1];
+};
+
+
 /*
  * setsegment
  *
@@ -217,45 +257,6 @@ push_gdt(void)
 }
 
 /*
- * push_pt
- *
- * Create an identity-mapped page directory hierarchy mapping the first
- * 1GB of physical memory. This is used during bootstrapping VMs on
- * CPUs without unrestricted guest capability.
- */
-static void
-push_pt(void)
-{
-	pt_entry_t ptes[NPTE_PG];
-	uint64_t i;
-
-#ifdef __i386__
-	memset(ptes, 0, sizeof(ptes));
-	for (i = 0 ; i < NPTE_PG; i++) {
-		ptes[i] = PG_V | PG_PS | (NBPD * i);
-	}
-	write_mem(PML4_PAGE, ptes, PAGE_SIZE);
-#else
-	/* PML3 [0] - first 1GB */
-	memset(ptes, 0, sizeof(ptes));
-	ptes[0] = PG_V | PML3_PAGE;
-	write_mem(PML4_PAGE, ptes, PAGE_SIZE);
-
-	/* PML3 [0] - first 1GB */
-	memset(ptes, 0, sizeof(ptes));
-	ptes[0] = PG_V | PG_RW | PG_u | PML2_PAGE;
-	write_mem(PML3_PAGE, ptes, PAGE_SIZE);
-
-	/* PML2 [0..511] - first 1GB (in 2MB pages) */
-	memset(ptes, 0, sizeof(ptes));
-	for (i = 0 ; i < NPTE_PG; i++) {
-		ptes[i] = PG_V | PG_RW | PG_u | PG_PS | (NBPD_L2 * i);
-	}
-	write_mem(PML2_PAGE, ptes, PAGE_SIZE);
-#endif
-}
-
-/*
  * loadfile_elf
  *
  * Loads an ELF kernel to it's defined load address in the guest VM.
@@ -291,7 +292,7 @@ loadfile_elf(FILE *fp, struct vm_create_params *vcp,
 		r = elf32_exec(fp, &hdr.elf32, marks, LOAD_ALL);
 	} else if (memcmp(hdr.elf64.e_ident, ELFMAG, SELFMAG) == 0 &&
 	    hdr.elf64.e_ident[EI_CLASS] == ELFCLASS64) {
-		r = elf64_exec(fp, &hdr.elf64, marks, LOAD_ALL);
+		r = elf64_exec(fp, &hdr.elf64, marks, LOAD_ALL & ~LOAD_SYM);
 	} else
 		errno = ENOEXEC;
 
@@ -299,7 +300,6 @@ loadfile_elf(FILE *fp, struct vm_create_params *vcp,
 		return (r);
 
 	push_gdt();
-	push_pt();
 	n = create_bios_memmap(vcp, memmap);
 	bootargsz = push_bootargs(memmap, n);
 	stacksize = push_stack(bootargsz, marks[MARK_END], bootdev, howto);
@@ -388,35 +388,45 @@ create_bios_memmap(struct vm_create_params *vcp, bios_memmap_t *memmap)
 static uint32_t
 push_bootargs(bios_memmap_t *memmap, size_t n)
 {
-	uint32_t memmap_sz, consdev_sz, i;
-	bios_consdev_t consdev;
-	uint32_t ba[1024];
 
-	memmap_sz = 3 * sizeof(int) + n * sizeof(bios_memmap_t);
-	ba[0] = 0x0;    /* memory map */
-	ba[1] = memmap_sz;
-	ba[2] = memmap_sz;	/* next */
-	memcpy(&ba[3], memmap, n * sizeof(bios_memmap_t));
-	i = memmap_sz / sizeof(int);
+        uint32_t ba[1024];
+        struct bootinfo *bi;
+        struct btinfo_console *bc;
+        struct btinfo_memmap *bm;
 
-	/* Serial console device, COM1 @ 0x3f8 */
-	consdev.consdev = makedev(8, 0);	/* com1 @ 0x3f8 */
-	consdev.conspeed = 9600;
-	consdev.consaddr = 0x3f8;
-	consdev.consfreq = 0;
+        bzero(&ba, sizeof(ba));
+        bi = (struct bootinfo *)&ba;
 
-	consdev_sz = 3 * sizeof(int) + sizeof(bios_consdev_t);
-	ba[i] = 0x5;   /* consdev */
-	ba[i + 1] = consdev_sz;
-	ba[i + 2] = consdev_sz;
-	memcpy(&ba[i + 3], &consdev, sizeof(bios_consdev_t));
-	i = i + 3 + (sizeof(bios_consdev_t) / 4);
+        bi->bi_nentries = 2;
 
-	ba[i] = 0xFFFFFFFF; /* BOOTARG_END */
+        bc = (struct btinfo_console *)&ba[0x100];
+        bc->common.len = sizeof(struct btinfo_console);
+        bc->common.type = BTINFO_CONSOLE;
+        strncpy(&bc->devname[0], "com", 16);
+        bc->addr = 0x3f8;
+        bc->speed = 9600;
+
+        bm = (struct btinfo_memmap *)&ba[0x200];
+
+        bm->common.len = sizeof(struct btinfo_memmap) +
+                sizeof(struct bi_memmap_entry);
+        bm->common.type = BTINFO_MEMMAP;
+        bm->num = 2;
+
+        bm->entry[0].addr = 0x0;
+        bm->entry[0].size = 0x9f000;
+        bm->entry[0].type = BIM_Memory;
+
+        bm->entry[1].addr = 0x100000;
+        bm->entry[1].size = 0x100000000;
+        bm->entry[1].type = BIM_Memory;
+
+        bi->entry[0] = 0x2400;
+        bi->entry[1] = 0x2800;
 
 	write_mem(BOOTARGS_PAGE, ba, PAGE_SIZE);
 
-	return (memmap_sz + consdev_sz);
+	return (PAGE_SIZE);
 }
 
 /*
@@ -452,20 +462,15 @@ push_stack(uint32_t bootargsz, uint32_t end, uint32_t bootdev, uint32_t howto)
 	uint32_t stack[1024];
 	uint16_t loc;
 
-	memset(&stack, 0, sizeof(stack));
-	loc = 1024;
+        bzero(&stack, sizeof(stack));
+        loc = 1024;
 
-	if (bootdev == 0)
-		bootdev = MAKEBOOTDEV(0x4, 0, 0, 0, 0); /* bootdev: sd0a */
-
-	stack[--loc] = BOOTARGS_PAGE;
-	stack[--loc] = bootargsz;
-	stack[--loc] = 0; /* biosbasemem */
-	stack[--loc] = 0; /* biosextmem */
-	stack[--loc] = end;
-	stack[--loc] = 0x0e;
-	stack[--loc] = bootdev;
-	stack[--loc] = howto;
+        stack[--loc] = bootargsz * 1024 - LOWMEM_KB;
+        stack[--loc] = LOWMEM_KB;
+        stack[--loc] = end;
+        stack[--loc] = BOOTARGS_PAGE;
+        stack[--loc] = 0x0;
+        stack[--loc] = 0x0;
 
 	write_mem(STACK_PAGE, &stack, PAGE_SIZE);
 
@@ -655,6 +660,8 @@ mbzero(paddr_t addr, int sz)
 static void
 mbcopy(void *src, paddr_t dst, int sz)
 {
+	log_debug("mbcopy src=%p dst=0x%llx sz=%d",
+	    src, (uint64_t)dst, sz);
 	write_mem(dst, src, sz);
 }
 
@@ -744,7 +751,7 @@ elf64_exec(FILE *fp, Elf64_Ehdr *elf, u_long *marks, int flags)
 				free(phdr);
 				return 1;
 			}
-			if (mread(fp, phdr[i].p_paddr, phdr[i].p_filesz) !=
+			if (mread(fp, (uint32_t)(phdr[i].p_paddr - 0xffff840000000000), phdr[i].p_filesz) !=
 			    phdr[i].p_filesz) {
 				free(phdr);
 				return 1;
@@ -765,7 +772,7 @@ elf64_exec(FILE *fp, Elf64_Ehdr *elf, u_long *marks, int flags)
 
 		/* Zero out BSS. */
 		if (IS_BSS(phdr[i]) && (flags & LOAD_BSS)) {
-			mbzero((phdr[i].p_paddr + phdr[i].p_filesz),
+			mbzero((uint32_t)(phdr[i].p_paddr - 0xffff840000000000 + phdr[i].p_filesz),
 			    phdr[i].p_memsz - phdr[i].p_filesz);
 		}
 		if (IS_BSS(phdr[i]) && (flags & (LOAD_BSS|COUNT_BSS))) {
