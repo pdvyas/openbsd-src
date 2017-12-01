@@ -342,6 +342,8 @@ int	 vmm_pipe(struct vmd_vm *, int, void (*)(int, short, void *));
 int	 start_vm(struct vmd_vm *, int);
 int receive_vm(struct vmd_vm *, int, int);
 __dead void vm_shutdown(unsigned int);
+uint64_t gva2gpa(uint64_t, uint64_t);
+struct vcpu_reg_state* get_regs(void);
 
 /* control.c */
 int	 config_init(struct vmd *);

@@ -188,6 +188,9 @@ com_rcv(struct ns8250_dev *com, uint32_t vm_id, uint32_t vcpu_id)
 uint8_t
 vcpu_process_com_data(union vm_exit *vei, uint32_t vm_id, uint32_t vcpu_id)
 {
+	struct vcpu_reg_state *vrs;
+	uint8_t b;
+	uint64_t gpa;
 	/*
 	 * vei_dir == VEI_DIR_OUT : out instruction
 	 *
@@ -202,7 +205,16 @@ vcpu_process_com_data(union vm_exit *vei, uint32_t vm_id, uint32_t vcpu_id)
 			return 0xFF;
 		}
 
-		write(com1_dev.fd, &vei->vei.vei_data, 1);
+		if (vei->vei.vei_string) {
+			/* log_info("HEEERRREE"); */
+			/* vrs = get_regs(); */
+			gpa = gva2gpa(vrs->vrs_crs[VCPU_REGS_CR3], vrs->vrs_crs[VCPU_REGS_RSI]);
+			read_mem(gpa, &b, sizeof(b));
+			write(com1_dev.fd, &b, 1);
+		} else {
+			write(com1_dev.fd, &vei->vei.vei_data, 1);
+		}
+
 		com1_dev.byte_out++;
 
 		if (com1_dev.regs.ier & IER_ETXRDY) {
