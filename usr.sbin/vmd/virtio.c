@@ -934,6 +934,7 @@ virtio_net_io(int dir, uint16_t reg, uint32_t *data, uint8_t *intr,
 
 	*intr = 0xFF;
 	mutex_lock(&dev->mutex);
+	log_info("here");
 
 	if (dir == 0) {
 		switch (reg) {

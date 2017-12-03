@@ -1980,65 +1980,66 @@ uint64_t gva2gpa(uint64_t cr3, uint64_t addr) {
 	/* if (addr != 0xfffffe8101585800) { */
 	/* 	return 0; */
 	/* } */
-	dump_regs(&vrp.vrwp_regs);
+	/* dump_regs(&vrp.vrwp_regs); */
 	addr = vrp.vrwp_regs.vrs_gprs[VCPU_REGS_RSI];
-        log_info("XXVCPU_REGS_RSI         : 0x%016llx", addr);
-	log_info("PCIDE: %llu", vrp.vrwp_regs.vrs_crs[VCPU_REGS_CR4] & CR4_PCIDE);
+        // log_info("XXVCPU_REGS_RSI         : 0x%016llx", addr);
+	// log_info("PCIDE: %llu", vrp.vrwp_regs.vrs_crs[VCPU_REGS_CR4] & CR4_PCIDE);
 
 
 	pml4_base = vrs->vrs_crs[VCPU_REGS_CR3] & PG_FRAME;
 	pml4_offset = pl4_pi(addr) * sizeof(uint64_t);
-	log_info("pml4_base: 0x%016llx", pml4_base);
-	log_info("pml4_offset: 0x%016llx", pml4_offset);
+	// log_info("pml4_base: 0x%016llx", pml4_base);
+	// log_info("pml4_offset: 0x%016llx", pml4_offset);
 	pml4e_addr = pml4_base + pml4_offset;
-	log_info("pml4e addr: 0x%016llx", pml4e_addr);
+	// log_info("pml4e addr: 0x%016llx", pml4e_addr);
 	read_mem(pml4e_addr, &pml4e, sizeof(pml4e));
-	log_info("pml4e: 0x%016llu", pml4e);
-	log_info("pml4e (PS): %d", pml4e & PG_PS);
-	log_info("pml4e (V): %d", pml4e & PG_V);
+	// log_info("pml4e: 0x%016llu", pml4e);
+	// log_info("pml4e (PS): %d", pml4e & PG_PS);
+	// log_info("pml4e (V): %d", pml4e & PG_V);
 	/* fatal("here"); */
-	log_info("------");
+	// log_info("------");
 
 	pdpte_base = (pml4e & PG_FRAME);
-	log_info("pdpte base: 0x%016llx", pdpte_base);
+	// log_info("pdpte base: 0x%016llx", pdpte_base);
 	pdpte_offset = pl3_pi(addr) * sizeof(pdpte);
-	log_info("pdpte offset: 0x%016llx", pdpte_offset);
+	// log_info("pdpte offset: 0x%016llx", pdpte_offset);
 	pdpte_addr = pdpte_base + pdpte_offset;
-	log_info("pdpte addr: 0x%016llx", pdpte_addr);
+	// log_info("pdpte addr: 0x%016llx", pdpte_addr);
 	read_mem(pdpte_addr, &pdpte, sizeof(pdpte));
-	log_info("pdpte: 0x%016llx", pdpte);
-	log_info("pdpte (PS): %d", pdpte & PG_PS);
-	log_info("pdpte (V): %d", pdpte & PG_V);
-	log_info("------");
+	// log_info("pdpte: 0x%016llx", pdpte);
+	// log_info("pdpte (PS): %d", pdpte & PG_PS);
+	// log_info("pdpte (V): %d", pdpte & PG_V);
+	// log_info("------");
 
 	p_addr = (pdpte & PG_FRAME) + (addr & 0x3fffffff);
-	log_info("p_ddr 0x%016llx", p_addr);
+	// log_info("p_ddr 0x%016llx", p_addr);
 	read_mem(p_addr, &p, sizeof(p));
-	log_info("p %c %d", p, sizeof(p));
+	// log_info("p %c %d", p, sizeof(p));
 	return p_addr;
+	fatal("here");
 
 	pde_base = (pdpte & PG_FRAME);
-	log_info("pde base: 0x%016llx", pde_base);
+	// log_info("pde base: 0x%016llx", pde_base);
 	pde_offset = pl2_pi(addr) * sizeof(pde);
-	log_info("pde offset: 0x%016llx", pde_offset);
+	// log_info("pde offset: 0x%016llx", pde_offset);
 	pde_addr = pde_base + pde_offset;
-	log_info("pde addr: 0x%016llx", pde_addr);
+	// log_info("pde addr: 0x%016llx", pde_addr);
 	read_mem(pde_addr, &pde, sizeof(pde));
-	log_info("pde: 0x%016llx", pde);
+	// log_info("pde: 0x%016llx", pde);
 
 	pt_base = (pde & PG_FRAME);
-	log_info("pt base: 0x%016llx", pt_base);
+	// log_info("pt base: 0x%016llx", pt_base);
 	pt_offset = pl1_pi(addr) * sizeof(pt);
-	log_info("pt offset: 0x%016llx", pt_offset);
+	// log_info("pt offset: 0x%016llx", pt_offset);
 	pt_addr = pt_base + pt_offset;
-	log_info("pt addr: 0x%016llx", pt_addr);
+	// log_info("pt addr: 0x%016llx", pt_addr);
 	read_mem(pt_addr, &pt, sizeof(pt));
-	log_info("pt: 0x%016llx", pt);
+	// log_info("pt: 0x%016llx", pt);
 
 	p_addr = (pt & PG_FRAME) + (addr & 0xfff);
-	log_info("p_ddr 0x%016llx", p_addr);
+	// log_info("p_ddr 0x%016llx", p_addr);
 	read_mem(p_addr, &p, sizeof(p));
-	log_info("p %x %d", p, sizeof(p));
+	// log_info("p %x %d", p, sizeof(p));
 	fatal("here");
 	return p_addr;
 }
