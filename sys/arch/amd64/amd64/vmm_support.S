@@ -475,6 +475,7 @@ _C_LABEL(svm_enter_guest):
 	movq	0x00(%rsi), %rsi
 
 	vmload	%rax
+	/* xchgw %bx, %bx */
 	vmrun	%rax
 	vmsave	%rax
 

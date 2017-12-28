@@ -41,7 +41,7 @@
 
 #include <dev/isa/isareg.h>
 
-/* #define VMM_DEBUG */
+#define VMM_DEBUG
 
 #ifdef VMM_DEBUG
 #define DPRINTF(x...)	do { printf(x); } while(0)
@@ -1493,9 +1493,113 @@ out:
  */
 int
 vcpu_readregs_svm(struct vcpu *vcpu, uint64_t regmask,
-    struct vcpu_reg_state *regs)
+    struct vcpu_reg_state *vrs)
 {
-	return (0);
+	int ret = 0;
+	uint64_t *gprs = vrs->vrs_gprs;
+	uint64_t *crs = vrs->vrs_crs;
+	uint64_t *msrs = vrs->vrs_msrs;
+	uint32_t attr;
+	struct vcpu_segment_info *sregs = vrs->vrs_sregs;
+	struct vmcb *vmcb = (struct vmcb *)vcpu->vc_control_va;
+
+	if (regmask & VM_RWREGS_GPRS) {
+		gprs[VCPU_REGS_RAX] = vcpu->vc_gueststate.vg_rax;
+		gprs[VCPU_REGS_RBX] = vcpu->vc_gueststate.vg_rbx;
+		gprs[VCPU_REGS_RCX] = vcpu->vc_gueststate.vg_rcx;
+		gprs[VCPU_REGS_RDX] = vcpu->vc_gueststate.vg_rdx;
+		gprs[VCPU_REGS_RSI] = vcpu->vc_gueststate.vg_rsi;
+		gprs[VCPU_REGS_RDI] = vcpu->vc_gueststate.vg_rdi;
+		gprs[VCPU_REGS_R8] = vcpu->vc_gueststate.vg_r8;
+		gprs[VCPU_REGS_R9] = vcpu->vc_gueststate.vg_r9;
+		gprs[VCPU_REGS_R10] = vcpu->vc_gueststate.vg_r10;
+		gprs[VCPU_REGS_R11] = vcpu->vc_gueststate.vg_r11;
+		gprs[VCPU_REGS_R12] = vcpu->vc_gueststate.vg_r12;
+		gprs[VCPU_REGS_R13] = vcpu->vc_gueststate.vg_r13;
+		gprs[VCPU_REGS_R14] = vcpu->vc_gueststate.vg_r14;
+		gprs[VCPU_REGS_R15] = vcpu->vc_gueststate.vg_r15;
+		gprs[VCPU_REGS_RBP] = vcpu->vc_gueststate.vg_rbp;
+		gprs[VCPU_REGS_RIP] = vcpu->vc_gueststate.vg_rip;
+		printf("RIP1        : 0x%016llx\n", gprs[VCPU_REGS_RIP]);
+		gprs[VCPU_REGS_RIP] = vmcb->v_rip;
+		printf("RIP2        : 0x%016llx\n", gprs[VCPU_REGS_RIP]);
+		gprs[VCPU_REGS_RSP] = vmcb->v_rsp;
+		gprs[VCPU_REGS_RFLAGS] = vmcb->v_rflags;
+		printf("CPL %d\n", vmcb->v_cpl);
+        }
+	if (regmask & VM_RWREGS_SREGS) {
+		sregs[VCPU_REGS_CS].vsi_sel = vmcb->v_cs.vs_sel;
+		sregs[VCPU_REGS_CS].vsi_limit = vmcb->v_cs.vs_lim;
+		attr = vmcb->v_cs.vs_attr;
+		sregs[VCPU_REGS_CS].vsi_ar = (attr & 0xff) | ((attr << 4) & 0xf000);
+		sregs[VCPU_REGS_CS].vsi_base = vmcb->v_cs.vs_base;
+
+		sregs[VCPU_REGS_DS].vsi_sel = vmcb->v_ds.vs_sel;
+		sregs[VCPU_REGS_DS].vsi_limit = vmcb->v_ds.vs_lim;
+		attr = vmcb->v_ds.vs_attr;
+		sregs[VCPU_REGS_DS].vsi_ar = (attr & 0xff) | ((attr << 4) & 0xf000);
+		sregs[VCPU_REGS_DS].vsi_base = vmcb->v_ds.vs_base;
+
+		sregs[VCPU_REGS_ES].vsi_sel = vmcb->v_es.vs_sel;
+		sregs[VCPU_REGS_ES].vsi_limit = vmcb->v_es.vs_lim;
+		attr = vmcb->v_es.vs_attr;
+		sregs[VCPU_REGS_ES].vsi_ar = (attr & 0xff) | ((attr << 4) & 0xf000);
+		sregs[VCPU_REGS_ES].vsi_base = vmcb->v_es.vs_base;
+
+		sregs[VCPU_REGS_FS].vsi_sel = vmcb->v_fs.vs_sel;
+		sregs[VCPU_REGS_FS].vsi_limit = vmcb->v_fs.vs_lim;
+		attr = vmcb->v_fs.vs_attr;
+		sregs[VCPU_REGS_FS].vsi_ar = (attr & 0xff) | ((attr << 4) & 0xf000);
+		sregs[VCPU_REGS_FS].vsi_base = vmcb->v_fs.vs_base;
+
+		sregs[VCPU_REGS_GS].vsi_sel = vmcb->v_gs.vs_sel;
+		sregs[VCPU_REGS_GS].vsi_limit = vmcb->v_gs.vs_lim;
+		attr = vmcb->v_gs.vs_attr;
+		sregs[VCPU_REGS_GS].vsi_ar = (attr & 0xff) | ((attr << 4) & 0xf000);
+		sregs[VCPU_REGS_GS].vsi_base = vmcb->v_gs.vs_base;
+
+		sregs[VCPU_REGS_SS].vsi_sel = vmcb->v_ss.vs_sel;
+		sregs[VCPU_REGS_SS].vsi_limit = vmcb->v_ss.vs_lim;
+		attr = vmcb->v_ss.vs_attr;
+		sregs[VCPU_REGS_SS].vsi_ar = (attr & 0xff) | ((attr << 4) & 0xf000);
+		sregs[VCPU_REGS_SS].vsi_base = vmcb->v_ss.vs_base;
+
+		sregs[VCPU_REGS_LDTR].vsi_sel = vmcb->v_ldtr.vs_sel;
+		sregs[VCPU_REGS_LDTR].vsi_limit = vmcb->v_ldtr.vs_lim;
+		attr = vmcb->v_ldtr.vs_attr;
+		sregs[VCPU_REGS_LDTR].vsi_ar = (attr & 0xff) | ((attr << 4) & 0xf000);
+		sregs[VCPU_REGS_LDTR].vsi_base = vmcb->v_ldtr.vs_base;
+
+		sregs[VCPU_REGS_TR].vsi_sel = vmcb->v_tr.vs_sel;
+		sregs[VCPU_REGS_TR].vsi_limit = vmcb->v_tr.vs_lim;
+		attr = vmcb->v_tr.vs_attr;
+		sregs[VCPU_REGS_TR].vsi_ar = (attr & 0xff) | ((attr << 4) & 0xf000);
+		sregs[VCPU_REGS_TR].vsi_base = vmcb->v_tr.vs_base;
+
+		vrs->vrs_gdtr.vsi_limit = vmcb->v_gdtr.vs_lim;
+		vrs->vrs_gdtr.vsi_base = vmcb->v_gdtr.vs_base;
+		vrs->vrs_idtr.vsi_limit = vmcb->v_idtr.vs_lim;
+		vrs->vrs_idtr.vsi_base = vmcb->v_idtr.vs_base;
+	}
+	if (regmask & VM_RWREGS_CRS) {
+		crs[VCPU_REGS_CR0] = vmcb->v_cr0;
+		crs[VCPU_REGS_CR3] = vmcb->v_cr3;
+		crs[VCPU_REGS_CR4] = vmcb->v_cr4;
+		crs[VCPU_REGS_CR2] = vcpu->vc_gueststate.vg_cr2;
+		crs[VCPU_REGS_XCR0] = vcpu->vc_gueststate.vg_xcr0;
+	}
+
+	if (regmask & VM_RWREGS_MSRS) {
+		 msrs[VCPU_REGS_EFER] = vmcb->v_efer;
+		 vmm_decode_efer_value(vmcb->v_efer);
+		 msrs[VCPU_REGS_STAR] = vmcb->v_star;
+		 msrs[VCPU_REGS_LSTAR] = vmcb->v_lstar;
+		 msrs[VCPU_REGS_CSTAR] = vmcb->v_cstar;
+		 msrs[VCPU_REGS_SFMASK] = vmcb->v_sfmask;
+		 msrs[VCPU_REGS_KGSBASE] = vmcb->v_kgsbase;
+	}
+
+	return (ret);
 }
 
 /*
@@ -1644,6 +1748,7 @@ vcpu_writeregs_svm(struct vcpu *vcpu, uint64_t regmask,
 	uint64_t *gprs = vrs->vrs_gprs;
 	uint64_t *crs = vrs->vrs_crs;
 	uint16_t attr;
+	uint64_t *msrs = vrs->vrs_msrs;
 	struct vcpu_segment_info *sregs = vrs->vrs_sregs;
 	struct vmcb *vmcb = (struct vmcb *)vcpu->vc_control_va;
 
@@ -1664,10 +1769,19 @@ vcpu_writeregs_svm(struct vcpu *vcpu, uint64_t regmask,
 		vcpu->vc_gueststate.vg_r15 = gprs[VCPU_REGS_R15];
 		vcpu->vc_gueststate.vg_rbp = gprs[VCPU_REGS_RBP];
 		vcpu->vc_gueststate.vg_rip = gprs[VCPU_REGS_RIP];
+		printf("RIP         : 0x%016llx\n", vcpu->vc_gueststate.vg_rip);
+		printf("&RIP         : 0x%llx\n", (uint64_t)&vcpu->vc_gueststate.vg_rip);
+
 
 		vmcb->v_rip = gprs[VCPU_REGS_RIP];
+		printf("vmcbRIP         : 0x%016llx\n", vmcb->v_rip);
+		printf("vmcb&RIP         : 0x%llx\n", (uint64_t)&vmcb->v_rip);
 		vmcb->v_rsp = gprs[VCPU_REGS_RSP];
+
+		printf("RSP         : 0x%016llx\n", vmcb->v_rsp);
+		printf("&RSP         : 0x%llx\n", (uint64_t)&vmcb->v_rsp);
 		vmcb->v_rflags = gprs[VCPU_REGS_RFLAGS];
+		printf("CPL %d\n", vmcb->v_cpl);
 	}
 
 	if (regmask & VM_RWREGS_SREGS) {
@@ -1721,6 +1835,18 @@ vcpu_writeregs_svm(struct vcpu *vcpu, uint64_t regmask,
 		vmcb->v_cr0 = crs[VCPU_REGS_CR0];
 		vmcb->v_cr3 = crs[VCPU_REGS_CR3];
 		vmcb->v_cr4 = crs[VCPU_REGS_CR4];
+		vcpu->vc_gueststate.vg_cr2 = crs[VCPU_REGS_CR2];
+		vcpu->vc_gueststate.vg_xcr0 = crs[VCPU_REGS_XCR0];
+	}
+
+	/* The only presettable MSR via this function in SVM is EFER */
+	if (regmask & VM_RWREGS_MSRS) {
+		vmcb->v_efer |= msrs[VCPU_REGS_EFER];
+		vmcb->v_star = msrs[VCPU_REGS_STAR];
+		vmcb->v_lstar = msrs[VCPU_REGS_LSTAR];
+		vmcb->v_cstar = msrs[VCPU_REGS_CSTAR];
+		vmcb->v_sfmask = msrs[VCPU_REGS_SFMASK];
+		vmcb->v_kgsbase = msrs[VCPU_REGS_KGSBASE];
 	}
 
 	return (0);
@@ -1840,6 +1966,7 @@ vcpu_reset_regs_svm(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 
 	ret = vcpu_writeregs_svm(vcpu, VM_RWREGS_ALL, vrs);
 
+	svm_set_dirty(vcpu, SVM_CLEANBITS_ALL);
 	/* xcr0 power on default sets bit 0 (x87 state) */
 	vcpu->vc_gueststate.vg_xcr0 = XCR0_X87;
 

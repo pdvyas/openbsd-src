@@ -65,6 +65,7 @@
 
 io_fn_t ioports_map[MAX_PORTS];
 
+void dump_regs(struct vcpu_reg_state *);
 int run_vm(int *, int *, struct vmop_create_params *, struct vcpu_reg_state *);
 void vm_dispatch_vmm(int, short, void *);
 void *event_thread(void *);
@@ -536,6 +537,7 @@ send_vm(int fd, struct vm_create_params *vcp)
 			log_warn("%s: readregs failed", __func__);
 			goto err;
 		}
+		dump_regs(&vrp.vrwp_regs);
 
 		sz = atomicio(vwrite, fd, &vrp,
 		    sizeof(struct vm_rwregs_params));
@@ -1499,6 +1501,7 @@ vcpu_exit(struct vm_run_params *vrp)
 		break;
 	case VMX_EXIT_TRIPLE_FAULT:
 	case SVM_VMEXIT_SHUTDOWN:
+		fatal("TRIPLE FAULT!!!");
 		/* reset VM */
 		return (EAGAIN);
 	default:
@@ -1911,3 +1914,48 @@ get_input_data(union vm_exit *vei, uint32_t *data)
 	}
 
 }
+
+
+void dump_regs(struct vcpu_reg_state *vrs) {
+        log_info("VCPU_REGS_RAX         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RAX]);
+        log_info("VCPU_REGS_RBX         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RBX]);
+        log_info("VCPU_REGS_RCX         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RCX]);
+        log_info("VCPU_REGS_RDX         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RDX]);
+        log_info("VCPU_REGS_RSI         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RSI]);
+        log_info("VCPU_REGS_RDI         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RDI]);
+        log_info("VCPU_REGS_R8          : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R8]);
+        log_info("VCPU_REGS_R9          : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R9]);
+        log_info("VCPU_REGS_R10         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R10]);
+        log_info("VCPU_REGS_R11         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R11]);
+        log_info("VCPU_REGS_R12         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R12]);
+        log_info("VCPU_REGS_R13         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R13]);
+        log_info("VCPU_REGS_R14         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R14]);
+        log_info("VCPU_REGS_R15         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R15]);
+        log_info("VCPU_REGS_RSP         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RSP]);
+        log_info("VCPU_REGS_RBP         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RBP]);
+        log_info("VCPU_REGS_RIP    : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RIP]);
+        log_info("VCPU_REGS_RFLAGS   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RFLAGS]);
+        log_info("VCPU_REGS_CR0         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR0]);
+        log_info("VCPU_REGS_CR2         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR2]);
+        log_info("VCPU_REGS_CR3         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR3]);
+        log_info("VCPU_REGS_CR4         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR4]);
+        log_info("VCPU_REGS_CR8         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR8]);
+        log_info("VCPU_REGS_CS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_CS].vsi_base, vrs->vrs_sregs[VCPU_REGS_CS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_CS].vsi_sel);
+        log_info("VCPU_REGS_DS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_DS].vsi_base, vrs->vrs_sregs[VCPU_REGS_DS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_DS].vsi_sel);
+        log_info("VCPU_REGS_ES          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_ES].vsi_base, vrs->vrs_sregs[VCPU_REGS_ES].vsi_limit, vrs->vrs_sregs[VCPU_REGS_ES].vsi_sel);
+        log_info("VCPU_REGS_FS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_FS].vsi_base, vrs->vrs_sregs[VCPU_REGS_FS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_FS].vsi_sel);
+        log_info("VCPU_REGS_GS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_GS].vsi_base, vrs->vrs_sregs[VCPU_REGS_GS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_GS].vsi_sel);
+        log_info("VCPU_REGS_SS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_SS].vsi_base, vrs->vrs_sregs[VCPU_REGS_SS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_SS].vsi_sel);
+        log_info("VCPU_REGS_LDTR   : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_gdtr.vsi_base, vrs->vrs_gdtr.vsi_limit, vrs->vrs_gdtr.vsi_sel);
+        log_info("VCPU_REGS_IDTR   : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_idtr.vsi_base, vrs->vrs_idtr.vsi_limit, vrs->vrs_idtr.vsi_sel);
+
+
+        log_info("VCPU_REGS_EFER        : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_EFER]);
+        log_info("VCPU_REGS_STAR        : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_STAR]);
+        log_info("VCPU_REGS_LSTAR       : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_LSTAR]);
+        log_info("VCPU_REGS_CSTAR       : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_CSTAR]);
+        log_info("VCPU_REGS_SFMASK      : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_SFMASK]);
+        log_info("VCPU_REGS_KGSBASE     : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_KGSBASE]);
+}
+
+
