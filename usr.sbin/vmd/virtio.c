@@ -2035,6 +2035,9 @@ vioscsi_restore(int fd, struct vm_create_params *vcp, int child_cdrom)
 {
 	off_t sz;
 
+	if (!strlen(vcp->vcp_cdrom))
+		return (0);
+
 	vioscsi = calloc(1, sizeof(struct vioscsi_dev));
 	if (vioscsi == NULL) {
 		log_warn("%s: calloc failure allocating vioscsi", __progname);
@@ -2139,9 +2142,12 @@ vioblk_dump(int fd)
 int
 vioscsi_dump(int fd)
 {
+	if (vioscsi == NULL)
+		return (0);
+
 	log_debug("%s: sending vioscsi", __func__);
-	if (atomicio(vwrite, fd, &vioscsi, sizeof(vioscsi)) !=
-	    sizeof(vioscsi)) {
+	if (atomicio(vwrite, fd, vioscsi, sizeof(struct vioscsi_dev)) !=
+	    sizeof(struct vioscsi_dev)) {
 		log_warnx("%s: error writing vioscsi to fd", __func__);
 		return (-1);
 	}
