@@ -186,6 +186,10 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 			} else {
 				vid.vid_id = vm->vm_vmid;
 			}
+		} else if (vm_getbyid(vid.vid_id) == NULL) {
+			res = ENOENT;
+			cmd = IMSG_VMDOP_PAUSE_VM_RESPONSE;
+			break;
 		}
 		proc_compose_imsg(ps, PROC_VMM, -1, imsg->hdr.type,
 		    imsg->hdr.peerid, -1, &vid, sizeof(vid));
