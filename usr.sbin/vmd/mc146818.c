@@ -354,6 +354,6 @@ mc146818_stop()
 void
 mc146818_start()
 {
-	evtimer_add(&rtc.per, &rtc.per_tv);
 	evtimer_add(&rtc.sec, &rtc.sec_tv);
+	rtc_reschedule_per();
 }
