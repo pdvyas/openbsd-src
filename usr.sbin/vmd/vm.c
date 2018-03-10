@@ -102,13 +102,13 @@ extern char *__progname;
 
 pthread_mutex_t threadmutex;
 pthread_cond_t threadcond;
-pthread_mutex_t vm_pause_mutex;
-pthread_cond_t vm_pause_cond;
-pthread_mutex_t vm_unpause_mutex;
-pthread_cond_t vm_unpause_cond;
 
 pthread_cond_t vcpu_run_cond[VMM_MAX_VCPUS_PER_VM];
 pthread_mutex_t vcpu_run_mtx[VMM_MAX_VCPUS_PER_VM];
+pthread_cond_t vcpu_pause_cond[VMM_MAX_VCPUS_PER_VM];
+pthread_mutex_t vcpu_pause_mtx[VMM_MAX_VCPUS_PER_VM];
+pthread_cond_t vcpu_unpause_cond[VMM_MAX_VCPUS_PER_VM];
+pthread_mutex_t vcpu_unpause_mtx[VMM_MAX_VCPUS_PER_VM];
 uint8_t vcpu_hlt[VMM_MAX_VCPUS_PER_VM];
 uint8_t vcpu_done[VMM_MAX_VCPUS_PER_VM];
 
@@ -687,12 +687,13 @@ pause_vm(struct vm_create_params *vcp)
 	if (current_vm->vm_paused)
 		return;
 
-	mutex_lock(&vm_pause_mutex);
 	current_vm->vm_paused = 1;
-	for (n = 0; n <= vcp->vcp_ncpus; n++)
+	for (n = 0; n < vcp->vcp_ncpus; n++) {
+		mutex_lock(&vcpu_pause_mtx[n]);
 		pthread_cond_broadcast(&vcpu_run_cond[n]);
-	pthread_cond_wait(&vm_pause_cond, &vm_pause_mutex);
-	mutex_unlock(&vm_pause_mutex);
+		pthread_cond_wait(&vcpu_pause_cond[n], &vcpu_pause_mtx[n]);
+		mutex_unlock(&vcpu_pause_mtx[n]);
+	}
 
 	i8253_stop();
 	mc146818_stop();
@@ -705,13 +706,12 @@ unpause_vm(struct vm_create_params *vcp)
 	if (!current_vm->vm_paused)
 		return;
 
-	pthread_cond_broadcast(&vm_unpause_cond);
 	current_vm->vm_paused = 0;
+	for (n = 0; n <= vcp->vcp_ncpus; n++)
+		pthread_cond_broadcast(&vcpu_unpause_cond[n]);
 
 	i8253_start();
 	mc146818_start();
-	for (n = 0; n <= vcp->vcp_ncpus; n++)
-		pthread_cond_broadcast(&vcpu_run_cond[n]);
 }
 
 /*
@@ -1092,30 +1092,6 @@ run_vm(int child_cdrom, int *child_disks, int *child_taps,
 		    "condition variable", __func__);
 		return (ret);
 	}
-	ret = pthread_mutex_init(&vm_pause_mutex, NULL);
-	if (ret) {
-		log_warn("%s: could not initialize vm pause mutex",
-		    __func__);
-		return (ret);
-	}
-	ret = pthread_cond_init(&vm_pause_cond, NULL);
-	if (ret) {
-		log_warn("%s: could not initialize vm pause "
-		    "condition variable", __func__);
-		return (ret);
-	}
-	ret = pthread_mutex_init(&vm_unpause_mutex, NULL);
-	if (ret) {
-		log_warn("%s: could not initialize vm unpause mutex",
-		    __func__);
-		return (ret);
-	}
-	ret = pthread_cond_init(&vm_unpause_cond, NULL);
-	if (ret) {
-		log_warn("%s: could not initialize vm unpause "
-		    "condition variable", __func__);
-		return (ret);
-	}
 
 	mutex_lock(&threadmutex);
 
@@ -1175,6 +1151,32 @@ run_vm(int child_cdrom, int *child_disks, int *child_taps,
 		ret = pthread_mutex_init(&vcpu_run_mtx[i], NULL);
 		if (ret) {
 			log_warnx("%s: cannot initialize mtx (%d)",
+			    __progname, ret);
+			return (ret);
+		}
+		ret = pthread_cond_init(&vcpu_pause_cond[i], NULL);
+		if (ret) {
+			log_warnx("%s: cannot initialize pause cond var (%d)",
+			    __progname, ret);
+			return (ret);
+		}
+
+		ret = pthread_mutex_init(&vcpu_pause_mtx[i], NULL);
+		if (ret) {
+			log_warnx("%s: cannot initialize pause mtx (%d)",
+			    __progname, ret);
+			return (ret);
+		}
+		ret = pthread_cond_init(&vcpu_unpause_cond[i], NULL);
+		if (ret) {
+			log_warnx("%s: cannot initialize unpause var (%d)",
+			    __progname, ret);
+			return (ret);
+		}
+
+		ret = pthread_mutex_init(&vcpu_unpause_mtx[i], NULL);
+		if (ret) {
+			log_warnx("%s: cannot initialize unpause mtx (%d)",
 			    __progname, ret);
 			return (ret);
 		}
@@ -1293,10 +1295,11 @@ vcpu_run_loop(void *arg)
 
 	for (;;) {
 		if (current_vm->vm_paused) {
-			pthread_cond_broadcast(&vm_pause_cond);
-			mutex_lock(&vm_unpause_mutex);
-			pthread_cond_wait(&vm_unpause_cond, &vm_unpause_mutex);
-			mutex_unlock(&vm_unpause_mutex);
+			log_info("PAUSEDDD");
+			pthread_cond_broadcast(&vcpu_pause_cond[n]);
+			mutex_lock(&vcpu_unpause_mtx[n]);
+			pthread_cond_wait(&vcpu_unpause_cond[n], &vcpu_unpause_mtx[n]);
+			mutex_unlock(&vcpu_unpause_mtx[n]);
 		}
 		ret = pthread_mutex_lock(&vcpu_run_mtx[n]);
 
