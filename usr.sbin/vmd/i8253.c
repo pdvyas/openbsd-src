@@ -373,7 +373,6 @@ i8253_restore(int fd, uint32_t vm_id)
 		i8253_channel[i].vm_id = vm_id;
 		evtimer_set(&i8253_channel[i].timer, i8253_fire,
 		    &i8253_channel[i]);
-		i8253_reset(i);
 	}
 	return (0);
 }

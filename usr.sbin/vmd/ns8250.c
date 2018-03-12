@@ -640,7 +640,6 @@ ns8250_restore(int fd, int con_fd, uint32_t vmid)
 
 	event_set(&com1_dev.event, com1_dev.fd, EV_READ | EV_PERSIST,
 	    com_rcv_event, (void *)(intptr_t)vmid);
-	event_add(&com1_dev.event, NULL);
 	return (0);
 }
 

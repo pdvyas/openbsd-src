@@ -274,6 +274,7 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		ret = vm_register(ps, &vmc, &vm, imsg->hdr.peerid, vmc.vmc_uid);
 		vm->vm_tty = imsg->fd;
 		vm->vm_received = 1;
+		vm->vm_paused = 1;
 		break;
 	case IMSG_VMDOP_RECEIVE_VM_END:
 		if ((vm = vm_getbyvmid(imsg->hdr.peerid)) == NULL) {
