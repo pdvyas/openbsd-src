@@ -643,3 +643,15 @@ ns8250_restore(int fd, int con_fd, uint32_t vmid)
 	event_add(&com1_dev.event, NULL);
 	return (0);
 }
+
+void
+ns8250_stop()
+{
+	event_del(&com1_dev.event);
+}
+
+void
+ns8250_start()
+{
+	event_add(&com1_dev.event, NULL);
+}

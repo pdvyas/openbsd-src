@@ -684,34 +684,75 @@ void
 pause_vm(struct vm_create_params *vcp)
 {
 	unsigned int n;
+	int ret;
 	if (current_vm->vm_paused)
 		return;
 
 	current_vm->vm_paused = 1;
 	for (n = 0; n < vcp->vcp_ncpus; n++) {
-		mutex_lock(&vcpu_pause_mtx[n]);
-		pthread_cond_broadcast(&vcpu_run_cond[n]);
-		pthread_cond_wait(&vcpu_pause_cond[n], &vcpu_pause_mtx[n]);
-		mutex_unlock(&vcpu_pause_mtx[n]);
+		log_debug("%s: locking pause mtx", __func__);
+		ret = pthread_mutex_lock(&vcpu_pause_mtx[n]);
+		if (ret) {
+			log_warnx("%s: can't lock vcpu pause mtx (%d)",
+			    __func__, (int)ret);
+			return;
+		}
+
+		log_debug("%s: broadcasting run cond", __func__);
+		ret = pthread_cond_broadcast(&vcpu_run_cond[n]);
+		if (ret) {
+			log_warnx("%s: can't broadcast vcpu run cond (%d)",
+			    __func__, (int)ret);
+			return;
+		}
+
+		log_debug("%s: waiting on pause cond", __func__);
+		ret = pthread_cond_wait(&vcpu_pause_cond[n], &vcpu_pause_mtx[n]);
+		if (ret) {
+			log_warnx("%s: can't wait on vcpu pause cond (%d)",
+			    __func__, (int)ret);
+			return;
+		}
+
+		log_debug("%s: unlocking pause mtx", __func__);
+		ret = pthread_mutex_unlock(&vcpu_pause_mtx[n]);
+		if (ret) {
+			log_warnx("%s: can't unlock vcpu mtx (%d)",
+			    __func__, (int)ret);
+			return;
+		}
 	}
 
 	i8253_stop();
 	mc146818_stop();
+	ns8250_stop();
+	virtio_stop(vcp);
 }
 
 void
 unpause_vm(struct vm_create_params *vcp)
 {
 	unsigned int n;
+	int ret;
 	if (!current_vm->vm_paused)
 		return;
 
+	log_debug("%s: setting vm_paused = 0", __func__);
 	current_vm->vm_paused = 0;
-	for (n = 0; n <= vcp->vcp_ncpus; n++)
-		pthread_cond_broadcast(&vcpu_unpause_cond[n]);
+	for (n = 0; n < vcp->vcp_ncpus; n++) {
+		log_debug("%s: broadcasting unpause cond", __func__);
+		ret = pthread_cond_broadcast(&vcpu_unpause_cond[n]);
+		if (ret) {
+			log_warnx("%s: can't broadcast vcpu unpause cond (%d)",
+			    __func__, (int)ret);
+			return;
+		}
+	}
 
 	i8253_start();
 	mc146818_start();
+	ns8250_start();
+	virtio_start(vcp);
 }
 
 /*
@@ -1294,13 +1335,6 @@ vcpu_run_loop(void *arg)
 	n = vrp->vrp_vcpu_id;
 
 	for (;;) {
-		if (current_vm->vm_paused) {
-			log_info("PAUSEDDD");
-			pthread_cond_broadcast(&vcpu_pause_cond[n]);
-			mutex_lock(&vcpu_unpause_mtx[n]);
-			pthread_cond_wait(&vcpu_unpause_cond[n], &vcpu_unpause_mtx[n]);
-			mutex_unlock(&vcpu_unpause_mtx[n]);
-		}
 		ret = pthread_mutex_lock(&vcpu_run_mtx[n]);
 
 		if (ret) {
@@ -1309,7 +1343,44 @@ vcpu_run_loop(void *arg)
 			return ((void *)ret);
 		}
 
-		/* If we are halted or paused, wait */
+		/* If we are halted and need to pause, pause */
+		if (vcpu_hlt[n] && current_vm->vm_paused) {
+			log_debug("%s: broadcasting pause cond", __func__);
+			ret = pthread_cond_broadcast(&vcpu_pause_cond[n]);
+			if (ret) {
+				log_warnx("%s: can't broadcast vcpu pause mtx"
+				    "(%d)", __func__, (int)ret);
+				return ((void *)ret);
+			}
+
+			log_debug("%s: locking unpause mtx", __func__);
+			ret = pthread_mutex_lock(&vcpu_unpause_mtx[n]);
+			if (ret) {
+				log_warnx("%s: can't lock vcpu unpause mtx (%d)",
+				    __func__, (int)ret);
+				return ((void *)ret);
+			}
+
+			log_debug("%s: waiting on unpause cond", __func__);
+			ret = pthread_cond_wait(&vcpu_unpause_cond[n],
+			    &vcpu_unpause_mtx[n]);
+			if (ret) {
+				log_warnx(
+				    "%s: can't wait on unpause cond (%d)",
+				    __func__, (int)ret);
+				break;
+			}
+
+			log_debug("%s: unlocking unpause mtx", __func__);
+			ret = pthread_mutex_unlock(&vcpu_unpause_mtx[n]);
+			if (ret) {
+				log_warnx("%s: can't unlock unpause mtx (%d)",
+				    __func__, (int)ret);
+				break;
+			}
+		}
+
+		/* If we are halted and not paused, wait */
 		if (vcpu_hlt[n]) {
 			ret = pthread_cond_wait(&vcpu_run_cond[n],
 			    &vcpu_run_mtx[n]);
