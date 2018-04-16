@@ -6069,7 +6069,7 @@ vcpu_run_svm(struct vcpu *vcpu, struct vm_run_params *vrp)
 				vmcb->v_eventinj = (irq & 0xFF) | (1<<31);
 			} else {
 				vmcb->v_irq = 1;
-				vmcb->v_intr_misc = 0x10; /* XXX #define ign_tpr */
+				vmcb->v_intr_misc = SVM_INTR_MISC_V_IGN_TPR;
 				vmcb->v_intr_vector = 0;
 				vmcb->v_intercept1 |= SVM_INTERCEPT_VINTR;
 				svm_set_dirty(vcpu, SVM_CLEANBITS_TPR |
@@ -6223,6 +6223,7 @@ vcpu_run_svm(struct vcpu *vcpu, struct vm_run_params *vrp)
 			if (vcpu->vc_irqready == 0 && vcpu->vc_intr) {
 				vmcb->v_intercept1 |= SVM_INTERCEPT_VINTR;
 				vmcb->v_irq = 1;
+				vmcb->v_intr_misc = SVM_INTR_MISC_V_IGN_TPR;
 				svm_set_dirty(vcpu, SVM_CLEANBITS_TPR |
 				    SVM_CLEANBITS_I);
 			}
