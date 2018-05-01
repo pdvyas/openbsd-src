@@ -30,6 +30,7 @@
 #include <sys/memrange.h>
 
 #include <uvm/uvm_extern.h>
+#include <uvm/uvm_pmap.h>
 
 #include <machine/fpu.h>
 #include <machine/pmap.h>
@@ -1125,8 +1126,10 @@ int
 vm_impl_init_vmx(struct vm *vm, struct proc *p)
 {
 	int i, ret;
-	vaddr_t mingpa, maxgpa;
+	vaddr_t mingpa, maxgpa, mmio_buf_va;
+	paddr_t mmio_buf_pa, j;
 	struct pmap *pmap;
+	char *buf;
 	struct vm_mem_range *vmr;
 
 	/* If not EPT, nothing to do here */
@@ -1138,6 +1141,24 @@ vm_impl_init_vmx(struct vm *vm, struct proc *p)
 	if (!pmap) {
 		printf("%s: pmap_create failed\n", __func__);
 		return (ENOMEM);
+	}
+
+	/* Allocate MMIO BUF VA */
+	mmio_buf_va = (vaddr_t)km_alloc(PAGE_SIZE, &kv_page, &kp_zero,
+	    &kd_waitok);
+
+	if (!mmio_buf_va)
+		return (ENOMEM);
+
+	/* Allocate MMIO BUF PA */
+	if (!pmap_extract(pmap_kernel(), mmio_buf_va,
+	    (paddr_t *)&mmio_buf_pa)) {
+		ret = ENOMEM;
+	}
+
+	for (i=0; i<PAGE_SIZE; i++) {
+		buf = (char*)(mmio_buf_va + i);
+		*buf = (char)0xbb;
 	}
 
 	/*
@@ -1183,6 +1204,9 @@ vm_impl_init_vmx(struct vm *vm, struct proc *p)
 		return (ENOMEM);
 	}
 
+	for (j=VMM_PCI_MMIO_BAR_BASE; j<VMM_PCI_MMIO_BAR_END; j+= PAGE_SIZE)
+		pmap_enter_ept(pmap, j, mmio_buf_pa, PROT_READ);
+
 	return (0);
 }
 
@@ -1203,7 +1227,9 @@ int
 vm_impl_init_svm(struct vm *vm, struct proc *p)
 {
 	int i, ret;
-	vaddr_t mingpa, maxgpa;
+	vaddr_t mingpa, maxgpa, mmio_buf_va;
+	paddr_t mmio_buf_pa, j;
+	char *buf;
 	struct pmap *pmap;
 	struct vm_mem_range *vmr;
 
@@ -1217,6 +1243,25 @@ vm_impl_init_svm(struct vm *vm, struct proc *p)
 		printf("%s: pmap_create failed\n", __func__);
 		return (ENOMEM);
 	}
+
+	/* Allocate MMIO BUF VA */
+	mmio_buf_va = (vaddr_t)km_alloc(PAGE_SIZE, &kv_page, &kp_zero,
+	    &kd_waitok);
+
+	if (!mmio_buf_va)
+		return (ENOMEM);
+
+	/* Allocate MMIO BUF PA */
+	if (!pmap_extract(pmap_kernel(), mmio_buf_va,
+	    (paddr_t *)&mmio_buf_pa)) {
+		ret = ENOMEM;
+	}
+
+	for (i=0; i<PAGE_SIZE; i++) {
+		buf = (char*)(mmio_buf_va + i);
+		*buf = (char)0xbb;
+	}
+
 
 	DPRINTF("%s: RVI pmap allocated @ %p\n", __func__, pmap);
 
@@ -1255,6 +1300,9 @@ vm_impl_init_svm(struct vm *vm, struct proc *p)
 
 	/* Convert pmap to RVI */
 	ret = pmap_convert(pmap, PMAP_TYPE_RVI);
+
+	for (j=VMM_PCI_MMIO_BAR_BASE; j<VMM_PCI_MMIO_BAR_END; j+= PAGE_SIZE)
+		pmap_enter(pmap, j, mmio_buf_pa, PROT_READ, PMAP_WIRED);
 
 	return (ret);
 }

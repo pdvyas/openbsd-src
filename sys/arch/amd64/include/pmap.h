@@ -518,3 +518,4 @@ struct vm_page_md {
 #endif	/* !_LOCORE */
 
 #endif	/* _MACHINE_PMAP_H_ */
+int pmap_enter_ept(struct pmap *, vaddr_t, paddr_t, vm_prot_t);
