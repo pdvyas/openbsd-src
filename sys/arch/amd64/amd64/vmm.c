@@ -1022,6 +1022,113 @@ vm_create_check_mem_ranges(struct vm_create_params *vcp)
 }
 
 /*
+ * find_gpa_range
+ *
+ * Search for a contiguous guest physical mem range.
+ *
+ * Parameters:
+ *  vcp: VM create parameters that contain the memory map to search in
+ *  gpa: the starting guest physical address
+ *  len: the length of the memory range
+ *
+ * Return values:
+ *  NULL: on failure if there is no memory range as described by the parameters
+ *  Pointer to vm_mem_range that contains the start of the range otherwise.
+ */
+static struct vm_mem_range *
+find_gpa_range(struct vm *vm, paddr_t gpa, size_t len)
+{
+	size_t i, n;
+	struct vm_mem_range *vmr;
+
+	/* Find the first vm_mem_range that contains gpa */
+	for (i = 0; i < vm->vm_nmemranges; i++) {
+		vmr = &vm->vm_memranges[i];
+		if (vmr->vmr_gpa + vmr->vmr_size >= gpa)
+			break;
+	}
+
+	/* No range found. */
+	if (i == vm->vm_nmemranges)
+		return (NULL);
+
+	/*
+	 * vmr may cover the range [gpa, gpa + len) only partly. Make
+	 * sure that the following vm_mem_ranges are contiguous and
+	 * cover the rest.
+	 */
+	n = vmr->vmr_size - (gpa - vmr->vmr_gpa);
+	if (len < n)
+		len = 0;
+	else
+		len -= n;
+	gpa = vmr->vmr_gpa + vmr->vmr_size;
+	for (i = i + 1; len != 0 && i < vm->vm_nmemranges; i++) {
+		vmr = &vm->vm_memranges[i];
+		if (gpa != vmr->vmr_gpa)
+			return (NULL);
+		if (len <= vmr->vmr_size)
+			len = 0;
+		else
+			len -= vmr->vmr_size;
+
+		gpa = vmr->vmr_gpa + vmr->vmr_size;
+	}
+
+	if (len != 0)
+		return (NULL);
+
+	return (vmr);
+}
+
+/*
+ * read_mem
+ *
+ * Reads memory at guest paddr 'src' into 'buf'.
+ *
+ * Parameters:
+ *  src: the source paddr_t in the guest VM to read from.
+ *  buf: destination (local) buffer
+ *  len: number of bytes to read
+ *
+ * Return values:
+ *  0: success
+ *  EINVAL: if the guest physical memory range [dst, dst + len) does not
+ *      exist in the guest.
+ */
+int
+read_mem(struct vm *vm, paddr_t src, void *buf, size_t len)
+{
+	char *from, *to = buf;
+	size_t n, off;
+	struct vm_mem_range *vmr;
+
+	vmr = find_gpa_range(vm, src, len);
+	if (vmr == NULL) {
+		DPRINTF("%s: failed - invalid memory range src = 0x%lx, "
+		    "len = 0x%zx", __func__, src, len);
+		return (EINVAL);
+	}
+
+	off = src - vmr->vmr_gpa;
+	while (len != 0) {
+		n = vmr->vmr_size - off;
+		if (len < n)
+			n = len;
+
+		from = (char *)vmr->vmr_va + off;
+		memcpy(to, from, n);
+
+		to += n;
+		len -= n;
+		off = 0;
+		vmr++;
+	}
+
+	return (0);
+}
+
+/*
  * vm_create
  *
  * Creates the in-memory VMM structures for the VM defined by 'vcp'. The

@@ -34,6 +34,8 @@
 #include <machine/pte.h>
 #include <machine/specialreg.h>
 #include <machine/vmmvar.h>
+#include <machine/pte.h>
+#include "pmap.h"
 
 #include <net/if.h>
 
@@ -1468,6 +1470,7 @@ int
 vcpu_exit(struct vm_run_params *vrp)
 {
 	int ret;
+	struct vcpu_reg_state *vrs;
 
 	switch (vrp->vrp_exit_reason) {
 	case VMX_EXIT_INT_WINDOW:
@@ -1493,6 +1496,8 @@ vcpu_exit(struct vm_run_params *vrp)
 		break;
 	case VMX_EXIT_HLT:
 	case SVM_VMEXIT_HLT:
+		vrs = get_regs();
+		gva2gpa(vrs->vrs_crs[VCPU_REGS_CR3], vrs->vrs_gprs[VCPU_REGS_RIP] - 1);
 		ret = pthread_mutex_lock(&vcpu_run_mtx[vrp->vrp_vcpu_id]);
 		if (ret) {
 			log_warnx("%s: can't lock vcpu mutex (%d)",
@@ -1921,4 +1926,210 @@ get_input_data(union vm_exit *vei, uint32_t *data)
 		    vei->vei.vei_size);
 	}
 
+}
+
+
+void dump_regs(struct vcpu_reg_state *vrs) {
+        /* log_info("VCPU_REGS_RAX         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RAX]); */
+        /* log_info("VCPU_REGS_RBX         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RBX]); */
+        /* log_info("VCPU_REGS_RCX         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RCX]); */
+        /* log_info("VCPU_REGS_RDX         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RDX]); */
+        /* log_info("VCPU_REGS_RSI         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RSI]); */
+        /* log_info("VCPU_REGS_RDI         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RDI]); */
+        /* log_info("VCPU_REGS_R8          : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R8]); */
+        /* log_info("VCPU_REGS_R9          : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R9]); */
+        /* log_info("VCPU_REGS_R10         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R10]); */
+        /* log_info("VCPU_REGS_R11         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R11]); */
+        /* log_info("VCPU_REGS_R12         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R12]); */
+        /* log_info("VCPU_REGS_R13         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R13]); */
+        /* log_info("VCPU_REGS_R14         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R14]); */
+        /* log_info("VCPU_REGS_R15         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_R15]); */
+        /* log_info("VCPU_REGS_RSP         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RSP]); */
+        /* log_info("VCPU_REGS_RBP         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RBP]); */
+        log_info("VCPU_REGS_RIP    : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RIP]);
+        /* log_info("VCPU_REGS_RFLAGS   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RFLAGS]); */
+        /* log_info("VCPU_REGS_CR0         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR0]); */
+        /* log_info("VCPU_REGS_CR2         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR2]); */
+        log_info("VCPU_REGS_CR3         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR3]);
+        /* log_info("VCPU_REGS_CR4         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR4]); */
+        /* log_info("VCPU_REGS_CR8         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR8]); */
+        /* log_info("VCPU_REGS_CS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_CS].vsi_base, vrs->vrs_sregs[VCPU_REGS_CS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_CS].vsi_sel); */
+        /* log_info("VCPU_REGS_DS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_DS].vsi_base, vrs->vrs_sregs[VCPU_REGS_DS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_DS].vsi_sel); */
+        /* log_info("VCPU_REGS_ES          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_ES].vsi_base, vrs->vrs_sregs[VCPU_REGS_ES].vsi_limit, vrs->vrs_sregs[VCPU_REGS_ES].vsi_sel); */
+        /* log_info("VCPU_REGS_FS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_FS].vsi_base, vrs->vrs_sregs[VCPU_REGS_FS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_FS].vsi_sel); */
+        /* log_info("VCPU_REGS_GS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_GS].vsi_base, vrs->vrs_sregs[VCPU_REGS_GS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_GS].vsi_sel); */
+        /* log_info("VCPU_REGS_SS          : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_sregs[VCPU_REGS_SS].vsi_base, vrs->vrs_sregs[VCPU_REGS_SS].vsi_limit, vrs->vrs_sregs[VCPU_REGS_SS].vsi_sel); */
+        /* log_info("VCPU_REGS_LDTR   : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_gdtr.vsi_base, vrs->vrs_gdtr.vsi_limit, vrs->vrs_gdtr.vsi_sel); */
+        /* log_info("VCPU_REGS_IDTR   : vsi_base=0x%016llx vsi_limit=0x%u vsi_sel=0x%d ", vrs->vrs_idtr.vsi_base, vrs->vrs_idtr.vsi_limit, vrs->vrs_idtr.vsi_sel); */
+
+
+        /* log_info("VCPU_REGS_EFER        : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_EFER]); */
+        /* log_info("VCPU_REGS_STAR        : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_STAR]); */
+        /* log_info("VCPU_REGS_LSTAR       : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_LSTAR]); */
+        /* log_info("VCPU_REGS_CSTAR       : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_CSTAR]); */
+        /* log_info("VCPU_REGS_SFMASK      : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_SFMASK]); */
+        /* log_info("VCPU_REGS_KGSBASE     : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_KGSBASE]); */
+}
+
+uint64_t gva2gpa(uint64_t cr3, uint64_t addr) {
+	/* int ret; */
+	/* struct vm_create_params *vcp; */
+	/* struct vm_rwregs_params	   vrp; */
+	/* uint64_t pml4_base, pml4e_addr, pml4_offset, pml4e; */
+	/* uint64_t pdpte_base, pdpte_offset, pdpte_addr, pdpte; */
+	/* uint64_t pde_base, pde_offset, pde_addr, pde; */
+	/* uint64_t pt_base, pt_offset, pt_addr, pt; */
+	/* uint64_t p_addr; */
+	/* uint8_t p; */
+	/* struct vcpu_reg_state *vrs; */
+
+	u_long mask, shift;
+	uint64_t pde;
+	pt_entry_t ptes;
+	pt_entry_t *pd;
+	uint64_t pdpa;
+	uint64_t p_addr;
+	int lev, offs, n=0;
+	uint8_t p;
+	pd = &ptes;
+
+	pdpa = cr3;
+	shift = L4_SHIFT;
+	mask = L4_MASK;
+
+	gva2gpa_w(cr3, addr);
+
+	for (lev = PTP_LEVELS; lev > 0; lev--) {
+		log_info("------");
+		offs = (VA_SIGN_POS(addr) & mask) >> shift;
+		offs = offs * sizeof(uint64_t);
+		log_info("pml4_base: 0x%016llx", pdpa);
+		log_info("pml4_offset: 0x%016llx", offs);
+		p_addr = pdpa + offs;
+		log_info("pml4e addr: 0x%016llx", p_addr);
+		read_mem(p_addr, &pde, sizeof(pdpa));
+		/* pde = *((pd)[offs]); */
+		log_info("pml4e: 0x%016llx", pde);
+		log_info("readmem");
+		/* pde = *((pd)[offs]); */
+
+
+		/* Large pages are different, break early if we run into one. */
+		if ((pde & (PG_PS|PG_V)) != PG_V)
+			return (lev - 1);
+
+		pdpa = pde & PG_FRAME;
+		/* 4096/8 == 512 == 2^9 entries per level */
+		shift -= 9;
+		mask >>= 9;
+		n++;
+		if (n==5)
+			fatal("here");
+	}
+
+	p_addr = (pdpa & PG_FRAME) + (addr & 0xfff);
+	log_info("p_ddr 0x%016llx", p_addr);
+	read_mem(p_addr, &p, sizeof(p));
+	log_info("p %x %d", p, sizeof(p));
+	log_info("------");
+	log_info("PAGE_MASK 0x%016llx", PAGE_MASK);
+	log_info("PAGE_MASK_L2 0x%016llx", (NBPD_L3 - 1));
+	fatal("here");
+	return 0;
+}
+
+
+
+uint64_t gva2gpa_w(uint64_t cr3, uint64_t addr) {
+	int ret;
+	struct vm_create_params *vcp;
+	struct vm_rwregs_params	   vrp;
+	uint64_t pml4_base, pml4e_addr, pml4_offset, pml4e;
+	uint64_t pdpte_base, pdpte_offset, pdpte_addr, pdpte;
+	uint64_t pde_base, pde_offset, pde_addr, pde;
+	uint64_t pt_base, pt_offset, pt_addr, pt;
+	uint64_t p_addr;
+	uint8_t p;
+	struct vcpu_reg_state *vrs;
+
+
+	log_info("------");
+	pml4_base = vrs->vrs_crs[VCPU_REGS_CR3] & PG_FRAME;
+	pml4_base = cr3 & PG_FRAME;
+	pml4_offset = pl4_pi(addr) * sizeof(uint64_t);
+	log_info("pml4_base: 0x%016llx", pml4_base);
+	log_info("pml4_offset: 0x%016llx", pml4_offset);
+	pml4e_addr = pml4_base + pml4_offset;
+	log_info("pml4e addr: 0x%016llx", pml4e_addr);
+	read_mem(pml4e_addr, &pml4e, sizeof(pml4e));
+	log_info("pml4e: 0x%016llx", pml4e);
+	log_info("pml4e (PS): %d", pml4e & PG_PS);
+	log_info("pml4e (V): %d", pml4e & PG_V);
+	/* fatal("here"); */
+	log_info("------");
+
+	pdpte_base = (pml4e & PG_FRAME);
+	log_info("pdpte base: 0x%016llx", pdpte_base);
+	pdpte_offset = pl3_pi(addr) * sizeof(pdpte);
+	log_info("pdpte offset: 0x%016llx", pdpte_offset);
+	pdpte_addr = pdpte_base + pdpte_offset;
+	log_info("pdpte addr: 0x%016llx", pdpte_addr);
+	read_mem(pdpte_addr, &pdpte, sizeof(pdpte));
+	log_info("pdpte: 0x%016llx", pdpte);
+	log_info("pdpte (PS): %d", pdpte & PG_PS);
+	log_info("pdpte (V): %d", pdpte & PG_V);
+	log_info("------");
+
+	/* p_addr = (pdpte & PG_FRAME) + (addr & 0x3fffffff); */
+	/* log_info("p_ddr 0x%016llx", p_addr); */
+	/* read_mem(p_addr, &p, sizeof(p)); */
+	/* log_info("p %c %d", p, sizeof(p)); */
+	/* return p_addr; */
+
+	pde_base = (pdpte & PG_FRAME);
+	log_info("pde base: 0x%016llx", pde_base);
+	pde_offset = pl2_pi(addr) * sizeof(pde);
+	log_info("pde offset: 0x%016llx", pde_offset);
+	pde_addr = pde_base + pde_offset;
+	log_info("pde addr: 0x%016llx", pde_addr);
+	read_mem(pde_addr, &pde, sizeof(pde));
+	log_info("pde: 0x%016llx", pde);
+	log_info("------");
+
+	pt_base = (pde & PG_FRAME);
+	log_info("pt base: 0x%016llx", pt_base);
+	pt_offset = pl1_pi(addr) * sizeof(pt);
+	log_info("pt offset: 0x%016llx", pt_offset);
+	pt_addr = pt_base + pt_offset;
+	log_info("pt addr: 0x%016llx", pt_addr);
+	read_mem(pt_addr, &pt, sizeof(pt));
+	log_info("pt: 0x%016llx", pt);
+	log_info("------");
+
+	p_addr = (pt & PG_FRAME) + (addr & 0xfff);
+	log_info("p_ddr 0x%016llx", p_addr);
+	read_mem(p_addr, &p, sizeof(p));
+	log_info("p %x %d", p, sizeof(p));
+	log_info("------");
+	return 0;
+	fatal("here");
+	return p_addr;
+}
+
+struct vcpu_reg_state*
+get_regs() {
+	struct vm_rwregs_params	   vrp;
+	struct vcpu_reg_state *vrs;
+	struct vm_create_params *vcp;
+	int ret;
+	vcp = &current_vm->vm_params.vmc_params;
+	vrp.vrwp_vm_id = vcp->vcp_id;
+	vrp.vrwp_vcpu_id = 0;
+	vrp.vrwp_mask = VM_RWREGS_ALL;
+	vrp.vrwp_mask = -1;
+	vrs = &vrp.vrwp_regs;
+	if ((ret = ioctl(env->vmd_fd, VMM_IOC_READREGS, &vrp))) {
+		log_warn("%s: readregs failed", __func__);
+	}
+	return vrs;
 }
