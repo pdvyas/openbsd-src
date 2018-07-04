@@ -1129,7 +1129,8 @@ read_mem(struct vm *vm, paddr_t src, void *buf, size_t len)
 }
 
 int                                                                           
-vmm_pmap_extract_guest(struct vcpu *vcpu, vaddr_t guest_va, paddr_t *guest_pa)
+vmm_pmap_extract_guest_impl(struct vcpu *vcpu, uint64_t cr3, vaddr_t guest_va,
+    paddr_t *guest_pa)
 {                                                                             
 	/* int ret; */
 	/* struct vm_create_params *vcp; */
@@ -1151,9 +1152,8 @@ vmm_pmap_extract_guest(struct vcpu *vcpu, vaddr_t guest_va, paddr_t *guest_pa)
 	paddr_t pdpa, p_addr;
 	struct vm *vm;
 
-	struct vmcb *vmcb = (struct vmcb *)vcpu->vc_control_va;
 	vm = vcpu->vc_parent;
-	pdpa = vmcb->v_cr3;
+	pdpa = cr3;
 	shift = L4_SHIFT;
 	mask = L4_MASK;
 
@@ -1204,6 +1204,28 @@ vmm_pmap_extract_guest(struct vcpu *vcpu, vaddr_t guest_va, paddr_t *guest_pa)
 	/* fatal("here"); */
 	return 0;
 }
+
+int                                                                           
+vmm_pmap_extract_guest(struct vcpu *vcpu, vaddr_t guest_va, paddr_t *guest_pa)
+{                                                                             
+	struct vmcb *vmcb = (struct vmcb *)vcpu->vc_control_va;
+	uint64_t cr3;
+	if (vmm_softc->mode == VMM_MODE_VMX ||
+	    vmm_softc->mode == VMM_MODE_EPT) {
+		if (vmread(VMCS_GUEST_IA32_CR3, &cr3))
+			return (EINVAL);
+		return vmm_pmap_extract_guest_impl(vcpu, cr3, guest_va,
+		    guest_pa);
+	}
+	else if (vmm_softc->mode == VMM_MODE_SVM || 
+	    vmm_softc->mode == VMM_MODE_RVI) {
+		cr3 = vmcb->v_cr3;
+		return vmm_pmap_extract_guest_impl(vcpu, cr3, guest_va,
+		    guest_pa);
+	}
+	return (EINVAL);
+}
+
 
 /*
  * vm_create
@@ -4707,6 +4729,7 @@ int
 vmx_handle_exit(struct vcpu *vcpu)
 {
 	uint64_t exit_reason, rflags, istate;
+	paddr_t p_addr;
 	int update_rip, ret = 0;
 
 	update_rip = 0;
@@ -4745,6 +4768,8 @@ vmx_handle_exit(struct vcpu *vcpu)
 		update_rip = 1;
 		break;
 	case VMX_EXIT_HLT:
+		vmm_pmap_extract_guest(vcpu, vcpu->vc_gueststate.vg_rip, &p_addr);
+		printf("got answer vmx: %16lx\n", p_addr);
 		ret = vmx_handle_hlt(vcpu);
 		update_rip = 1;
 		break;
