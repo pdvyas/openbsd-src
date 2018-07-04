@@ -1022,93 +1022,32 @@ vm_create_check_mem_ranges(struct vm_create_params *vcp)
 }
 
 /*
- * find_gpa_range
- *
- * Search for a contiguous guest physical mem range.
- *
- * Parameters:
- *  vcp: VM create parameters that contain the memory map to search in
- *  gpa: the starting guest physical address
- *  len: the length of the memory range
- *
- * Return values:
- *  NULL: on failure if there is no memory range as described by the parameters
- *  Pointer to vm_mem_range that contains the start of the range otherwise.
- */
-/* static struct vm_mem_range * */
-/* find_gpa_range(struct vm *vm, paddr_t gpa, size_t len) */
-/* { */
-/* 	size_t i, n; */
-/* 	struct vm_mem_range *vmr; */
-/*  */
-/* 	#<{(| Find the first vm_mem_range that contains gpa |)}># */
-/* 	for (i = 0; i < vm->vm_nmemranges; i++) { */
-/* 		vmr = &vm->vm_memranges[i]; */
-/* 		if (vmr->vmr_gpa + vmr->vmr_size >= gpa) */
-/* 			break; */
-/* 	} */
-/*  */
-/* 	#<{(| No range found. |)}># */
-/* 	if (i == vm->vm_nmemranges) */
-/* 		return (NULL); */
-/*  */
-/* 	#<{(| */
-/* 	 * vmr may cover the range [gpa, gpa + len) only partly. Make */
-/* 	 * sure that the following vm_mem_ranges are contiguous and */
-/* 	 * cover the rest. */
-/* 	 |)}># */
-/* 	n = vmr->vmr_size - (gpa - vmr->vmr_gpa); */
-/* 	if (len < n) */
-/* 		len = 0; */
-/* 	else */
-/* 		len -= n; */
-/* 	gpa = vmr->vmr_gpa + vmr->vmr_size; */
-/* 	for (i = i + 1; len != 0 && i < vm->vm_nmemranges; i++) { */
-/* 		vmr = &vm->vm_memranges[i]; */
-/* 		if (gpa != vmr->vmr_gpa) */
-/* 			return (NULL); */
-/* 		if (len <= vmr->vmr_size) */
-/* 			len = 0; */
-/* 		else */
-/* 			len -= vmr->vmr_size; */
-/*  */
-/* 		gpa = vmr->vmr_gpa + vmr->vmr_size; */
-/* 	} */
-/*  */
-/* 	if (len != 0) */
-/* 		return (NULL); */
-/*  */
-/* 	return (vmr); */
-/* } */
-
-/*
  * read_mem
  *
  * Reads memory at guest paddr 'src' into 'buf'.
  *
  * Parameters:
  *  vm: the VM
- *  src: the source paddr_t in the guest VM to read from.
+ *  gpa: The guest physical address to read from
  *  buf: destination (local) buffer
  *  len: number of bytes to read
  *
  * Return values:
  *  0: success
- *  EINVAL: if the guest physical memory range [dst, dst + len) does not
- *      exist in the guest.
+ *  EINVAL: if translating guest physical address to host physical address
+ *  fails
  */
 int
-read_mem(struct vcpu *vcpu, paddr_t src, void *buf, size_t len)
+read_mem(struct vm *vm, paddr_t gpa, void *buf, size_t len)
 {
-	vaddr_t h;
-	vaddr_t h2;
-	pmap_extract(vcpu->vc_parent->vm_map->pmap, src, &h);
-	printf("extracted 1: %16lx\n", h);
-	h2 = PMAP_DIRECT_MAP(h);
-	printf("extracted 2: %16lx\n", h2);
-	printf("READING\n");
-	memcpy(buf, (char *) h2, len);
-	return 0;
+	paddr_t hpa;
+	vaddr_t hva;
+	if (!pmap_extract(vm->vm_map->pmap, gpa, &hpa))
+		return (EINVAL);
+	hva = PMAP_DIRECT_MAP(hpa);
+	/* XXX: check for page boundaries?  */
+	memcpy(buf, (char *) hva, len);
+	return (0);
 }
 
 int
@@ -1118,12 +1057,8 @@ vmm_pmap_extract_guest_impl(struct vcpu *vcpu, uint64_t cr3, vaddr_t guest_va,
 	u_long mask, shift;
 	int level, offset;
 	pd_entry_t pde;
-	/* pd_entry_t pde2; */
 	paddr_t pdpa;
 	struct vm *vm;
-
-	/* vaddr_t h; */
-	/* vaddr_t h2; */
 
 	vm = vcpu->vc_parent;
 	pdpa = cr3;
@@ -1133,7 +1068,8 @@ vmm_pmap_extract_guest_impl(struct vcpu *vcpu, uint64_t cr3, vaddr_t guest_va,
 	for (level = PTP_LEVELS; level > 0; level--) {
 		offset = (VA_SIGN_POS(guest_va) & mask) >> shift;
 		offset = offset * sizeof(uint64_t);
-		read_mem(vcpu, pdpa + offset, &pde, sizeof(pdpa));
+		if(read_mem(vm, pdpa + offset, &pde, sizeof(pde)))
+			return (EINVAL);
 		printf("From readmem: %16llx\n", pde);
 
 
@@ -1165,6 +1101,21 @@ vmm_pmap_extract_guest_impl(struct vcpu *vcpu, uint64_t cr3, vaddr_t guest_va,
 	return (EINVAL);
 }
 
+/*
+ * vmm_pmap_extract_guest
+ *
+ * Extract guest physical address from guest virtual address based on pmap in
+ * the provided vcpu's CR3
+ *
+ * Parameters:
+ *  vcpu: the vcpu.
+ *  guest_va: guest virtual address.
+ *  guest_pa: guest physical address for given guest virtual address.
+ *
+ * Return values:
+ *  0: success
+ *  EINVAL: if we find an invalid entry while translating
+ */
 int
 vmm_pmap_extract_guest(struct vcpu *vcpu, vaddr_t guest_va, paddr_t *guest_pa)
 {
@@ -4730,7 +4681,7 @@ vmx_handle_exit(struct vcpu *vcpu)
 		break;
 	case VMX_EXIT_HLT:
 		vmm_pmap_extract_guest(vcpu, vcpu->vc_gueststate.vg_rip, &p_addr);
-		read_mem(vcpu, p_addr, &p, sizeof(p));
+		read_mem(vcpu->vc_parent, p_addr, &p, sizeof(p));
 		printf("got answer vmx: %16lx\n", p_addr);
 		printf("should be: %x\n", p);
 		ret = vmx_handle_hlt(vcpu);
