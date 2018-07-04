@@ -1129,10 +1129,10 @@ read_mem(struct vm *vm, paddr_t src, void *buf, size_t len)
 	return (0);
 }
 
-int                                                                           
+int
 vmm_pmap_extract_guest_impl(struct vcpu *vcpu, uint64_t cr3, vaddr_t guest_va,
     paddr_t *guest_pa)
-{                                                                             
+{
 	u_long mask, shift;
 	int level, offset;
 	pd_entry_t pde;
@@ -1190,7 +1190,7 @@ vmm_pmap_extract_guest(struct vcpu *vcpu, vaddr_t guest_va, paddr_t *guest_pa)
 		return vmm_pmap_extract_guest_impl(vcpu, cr3, guest_va,
 		    guest_pa);
 	}
-	else if (vmm_softc->mode == VMM_MODE_SVM || 
+	else if (vmm_softc->mode == VMM_MODE_SVM ||
 	    vmm_softc->mode == VMM_MODE_RVI) {
 		cr3 = vmcb->v_cr3;
 		return vmm_pmap_extract_guest_impl(vcpu, cr3, guest_va,
