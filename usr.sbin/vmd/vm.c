@@ -1971,7 +1971,8 @@ void dump_regs(struct vcpu_reg_state *vrs) {
         /* log_info("VCPU_REGS_KGSBASE     : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_KGSBASE]); */
 }
 
-uint64_t gva2gpa(uint64_t cr3, uint64_t addr) {
+uint64_t gva2gpa(uint64_t cr3, vaddr_t addr) {
+	return 0;
 	/* int ret; */
 	/* struct vm_create_params *vcp; */
 	/* struct vm_rwregs_params	   vrp; */
@@ -1984,29 +1985,28 @@ uint64_t gva2gpa(uint64_t cr3, uint64_t addr) {
 	/* struct vcpu_reg_state *vrs; */
 
 	u_long mask, shift;
-	uint64_t pde;
 	pt_entry_t ptes;
 	pt_entry_t *pd;
-	uint64_t pdpa;
-	uint64_t p_addr;
-	int lev, offs, n=0;
-	uint8_t p;
+	int lev, offs;
 	pd = &ptes;
+	pd_entry_t pde;
+	paddr_t pdpa, p_addr;
 
 	pdpa = cr3;
 	shift = L4_SHIFT;
 	mask = L4_MASK;
 
-	gva2gpa_w(cr3, addr);
+	uint8_t p;
+
+	/* gva2gpa_w(cr3, addr); */
 
 	for (lev = PTP_LEVELS; lev > 0; lev--) {
-		log_info("------");
 		offs = (VA_SIGN_POS(addr) & mask) >> shift;
 		offs = offs * sizeof(uint64_t);
-		log_info("pml4_base: 0x%016llx", pdpa);
-		log_info("pml4_offset: 0x%016llx", offs);
+		log_info("pml4_base: 0x%016lx", pdpa);
+		log_info("pml4_offset: 0x%016x", offs);
 		p_addr = pdpa + offs;
-		log_info("pml4e addr: 0x%016llx", p_addr);
+		log_info("pml4e addr: 0x%016lx", p_addr);
 		read_mem(p_addr, &pde, sizeof(pdpa));
 		/* pde = *((pd)[offs]); */
 		log_info("pml4e: 0x%016llx", pde);
@@ -2022,100 +2022,106 @@ uint64_t gva2gpa(uint64_t cr3, uint64_t addr) {
 		/* 4096/8 == 512 == 2^9 entries per level */
 		shift -= 9;
 		mask >>= 9;
-		n++;
-		if (n==5)
-			fatal("here");
 	}
 
-	p_addr = (pdpa & PG_FRAME) + (addr & 0xfff);
-	log_info("p_ddr 0x%016llx", p_addr);
-	read_mem(p_addr, &p, sizeof(p));
-	log_info("p %x %d", p, sizeof(p));
-	log_info("------");
-	log_info("PAGE_MASK 0x%016llx", PAGE_MASK);
-	log_info("PAGE_MASK_L2 0x%016llx", (NBPD_L3 - 1));
+	if (lev == 0 && (pde & PG_V)) {
+			p_addr = pdpa | (addr & PAGE_MASK);
+			log_info("p_ddr 0x%016llx", p_addr);
+			read_mem(p_addr, &p, sizeof(p));
+			log_info("p %x %d", p, sizeof(p));
+			log_info("------");
+	}
+	/* if (level == 1 && (ptes[offs] & (PG_PS|PG_V)) == (PG_PS|PG_V)) { */
+	/* 	if (pap != NULL) */
+	/* 		*pap = (ptes[offs] & PG_LGFRAME) | (va & PAGE_MASK_L2); */
+	/* 	return (TRUE); */
+	/* } */
+
+	log_info("valid: %d", pde & PG_V);
+	/* p_addr = (pdpa & PG_FRAME) + (addr & 0xfff); */
+	/* p_addr = pdpa + (addr & 0xfff); */
 	fatal("here");
 	return 0;
 }
 
 
 
-uint64_t gva2gpa_w(uint64_t cr3, uint64_t addr) {
-	int ret;
-	struct vm_create_params *vcp;
-	struct vm_rwregs_params	   vrp;
-	uint64_t pml4_base, pml4e_addr, pml4_offset, pml4e;
-	uint64_t pdpte_base, pdpte_offset, pdpte_addr, pdpte;
-	uint64_t pde_base, pde_offset, pde_addr, pde;
-	uint64_t pt_base, pt_offset, pt_addr, pt;
-	uint64_t p_addr;
-	uint8_t p;
-	struct vcpu_reg_state *vrs;
-
-
-	log_info("------");
-	pml4_base = vrs->vrs_crs[VCPU_REGS_CR3] & PG_FRAME;
-	pml4_base = cr3 & PG_FRAME;
-	pml4_offset = pl4_pi(addr) * sizeof(uint64_t);
-	log_info("pml4_base: 0x%016llx", pml4_base);
-	log_info("pml4_offset: 0x%016llx", pml4_offset);
-	pml4e_addr = pml4_base + pml4_offset;
-	log_info("pml4e addr: 0x%016llx", pml4e_addr);
-	read_mem(pml4e_addr, &pml4e, sizeof(pml4e));
-	log_info("pml4e: 0x%016llx", pml4e);
-	log_info("pml4e (PS): %d", pml4e & PG_PS);
-	log_info("pml4e (V): %d", pml4e & PG_V);
-	/* fatal("here"); */
-	log_info("------");
-
-	pdpte_base = (pml4e & PG_FRAME);
-	log_info("pdpte base: 0x%016llx", pdpte_base);
-	pdpte_offset = pl3_pi(addr) * sizeof(pdpte);
-	log_info("pdpte offset: 0x%016llx", pdpte_offset);
-	pdpte_addr = pdpte_base + pdpte_offset;
-	log_info("pdpte addr: 0x%016llx", pdpte_addr);
-	read_mem(pdpte_addr, &pdpte, sizeof(pdpte));
-	log_info("pdpte: 0x%016llx", pdpte);
-	log_info("pdpte (PS): %d", pdpte & PG_PS);
-	log_info("pdpte (V): %d", pdpte & PG_V);
-	log_info("------");
-
-	/* p_addr = (pdpte & PG_FRAME) + (addr & 0x3fffffff); */
-	/* log_info("p_ddr 0x%016llx", p_addr); */
-	/* read_mem(p_addr, &p, sizeof(p)); */
-	/* log_info("p %c %d", p, sizeof(p)); */
-	/* return p_addr; */
-
-	pde_base = (pdpte & PG_FRAME);
-	log_info("pde base: 0x%016llx", pde_base);
-	pde_offset = pl2_pi(addr) * sizeof(pde);
-	log_info("pde offset: 0x%016llx", pde_offset);
-	pde_addr = pde_base + pde_offset;
-	log_info("pde addr: 0x%016llx", pde_addr);
-	read_mem(pde_addr, &pde, sizeof(pde));
-	log_info("pde: 0x%016llx", pde);
-	log_info("------");
-
-	pt_base = (pde & PG_FRAME);
-	log_info("pt base: 0x%016llx", pt_base);
-	pt_offset = pl1_pi(addr) * sizeof(pt);
-	log_info("pt offset: 0x%016llx", pt_offset);
-	pt_addr = pt_base + pt_offset;
-	log_info("pt addr: 0x%016llx", pt_addr);
-	read_mem(pt_addr, &pt, sizeof(pt));
-	log_info("pt: 0x%016llx", pt);
-	log_info("------");
-
-	p_addr = (pt & PG_FRAME) + (addr & 0xfff);
-	log_info("p_ddr 0x%016llx", p_addr);
-	read_mem(p_addr, &p, sizeof(p));
-	log_info("p %x %d", p, sizeof(p));
-	log_info("------");
-	return 0;
-	fatal("here");
-	return p_addr;
-}
-
+/* uint64_t gva2gpa_w(uint64_t cr3, uint64_t addr) { */
+/* 	int ret; */
+/* 	struct vm_create_params *vcp; */
+/* 	struct vm_rwregs_params	   vrp; */
+/* 	uint64_t pml4_base, pml4e_addr, pml4_offset, pml4e; */
+/* 	uint64_t pdpte_base, pdpte_offset, pdpte_addr, pdpte; */
+/* 	uint64_t pde_base, pde_offset, pde_addr, pde; */
+/* 	uint64_t pt_base, pt_offset, pt_addr, pt; */
+/* 	uint64_t p_addr; */
+/* 	uint8_t p; */
+/* 	struct vcpu_reg_state *vrs; */
+/*  */
+/*  */
+/* 	log_info("------"); */
+/* 	pml4_base = vrs->vrs_crs[VCPU_REGS_CR3] & PG_FRAME; */
+/* 	pml4_base = cr3 & PG_FRAME; */
+/* 	pml4_offset = pl4_pi(addr) * sizeof(uint64_t); */
+/* 	log_info("pml4_base: 0x%016llx", pml4_base); */
+/* 	log_info("pml4_offset: 0x%016llx", pml4_offset); */
+/* 	pml4e_addr = pml4_base + pml4_offset; */
+/* 	log_info("pml4e addr: 0x%016llx", pml4e_addr); */
+/* 	read_mem(pml4e_addr, &pml4e, sizeof(pml4e)); */
+/* 	log_info("pml4e: 0x%016llx", pml4e); */
+/* 	log_info("pml4e (PS): %d", pml4e & PG_PS); */
+/* 	log_info("pml4e (V): %d", pml4e & PG_V); */
+/* 	#<{(| fatal("here"); |)}># */
+/* 	log_info("------"); */
+/*  */
+/* 	pdpte_base = (pml4e & PG_FRAME); */
+/* 	log_info("pdpte base: 0x%016llx", pdpte_base); */
+/* 	pdpte_offset = pl3_pi(addr) * sizeof(pdpte); */
+/* 	log_info("pdpte offset: 0x%016llx", pdpte_offset); */
+/* 	pdpte_addr = pdpte_base + pdpte_offset; */
+/* 	log_info("pdpte addr: 0x%016llx", pdpte_addr); */
+/* 	read_mem(pdpte_addr, &pdpte, sizeof(pdpte)); */
+/* 	log_info("pdpte: 0x%016llx", pdpte); */
+/* 	log_info("pdpte (PS): %d", pdpte & PG_PS); */
+/* 	log_info("pdpte (V): %d", pdpte & PG_V); */
+/* 	log_info("------"); */
+/*  */
+/* 	#<{(| p_addr = (pdpte & PG_FRAME) + (addr & 0x3fffffff); |)}># */
+/* 	#<{(| log_info("p_ddr 0x%016llx", p_addr); |)}># */
+/* 	#<{(| read_mem(p_addr, &p, sizeof(p)); |)}># */
+/* 	#<{(| log_info("p %c %d", p, sizeof(p)); |)}># */
+/* 	#<{(| return p_addr; |)}># */
+/*  */
+/* 	pde_base = (pdpte & PG_FRAME); */
+/* 	log_info("pde base: 0x%016llx", pde_base); */
+/* 	pde_offset = pl2_pi(addr) * sizeof(pde); */
+/* 	log_info("pde offset: 0x%016llx", pde_offset); */
+/* 	pde_addr = pde_base + pde_offset; */
+/* 	log_info("pde addr: 0x%016llx", pde_addr); */
+/* 	read_mem(pde_addr, &pde, sizeof(pde)); */
+/* 	log_info("pde: 0x%016llx", pde); */
+/* 	log_info("------"); */
+/*  */
+/* 	pt_base = (pde & PG_FRAME); */
+/* 	log_info("pt base: 0x%016llx", pt_base); */
+/* 	pt_offset = pl1_pi(addr) * sizeof(pt); */
+/* 	log_info("pt offset: 0x%016llx", pt_offset); */
+/* 	pt_addr = pt_base + pt_offset; */
+/* 	log_info("pt addr: 0x%016llx", pt_addr); */
+/* 	read_mem(pt_addr, &pt, sizeof(pt)); */
+/* 	log_info("pt: 0x%016llx", pt); */
+/* 	log_info("------"); */
+/*  */
+/* 	p_addr = (pt & PG_FRAME) + (addr & 0xfff); */
+/* 	log_info("p_ddr 0x%016llx", p_addr); */
+/* 	read_mem(p_addr, &p, sizeof(p)); */
+/* 	log_info("p %x %d", p, sizeof(p)); */
+/* 	log_info("------"); */
+/* 	return 0; */
+/* 	fatal("here"); */
+/* 	return p_addr; */
+/* } */
+/*  */
 struct vcpu_reg_state*
 get_regs() {
 	struct vm_rwregs_params	   vrp;

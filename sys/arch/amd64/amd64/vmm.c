@@ -1128,6 +1128,83 @@ read_mem(struct vm *vm, paddr_t src, void *buf, size_t len)
 	return (0);
 }
 
+int                                                                           
+vmm_pmap_extract_guest(struct vcpu *vcpu, vaddr_t guest_va, paddr_t *guest_pa)
+{                                                                             
+	/* int ret; */
+	/* struct vm_create_params *vcp; */
+	/* struct vm_rwregs_params	   vrp; */
+	/* uint64_t pml4_base, pml4e_addr, pml4_offset, pml4e; */
+	/* uint64_t pdpte_base, pdpte_offset, pdpte_addr, pdpte; */
+	/* uint64_t pde_base, pde_offset, pde_addr, pde; */
+	/* uint64_t pt_base, pt_offset, pt_addr, pt; */
+	/* uint64_t p_addr; */
+	/* uint8_t p; */
+	/* struct vcpu_reg_state *vrs; */
+
+	u_long mask, shift;
+	pt_entry_t ptes;
+	pt_entry_t *pd;
+	int lev, offs;
+	pd = &ptes;
+	pd_entry_t pde;
+	paddr_t pdpa, p_addr;
+	struct vm *vm;
+
+	struct vmcb *vmcb = (struct vmcb *)vcpu->vc_control_va;
+	vm = vcpu->vc_parent;
+	pdpa = vmcb->v_cr3;
+	shift = L4_SHIFT;
+	mask = L4_MASK;
+
+	uint8_t p;
+
+	for (lev = PTP_LEVELS; lev > 0; lev--) {
+		offs = (VA_SIGN_POS(guest_va) & mask) >> shift;
+		offs = offs * sizeof(uint64_t);
+		printf("pml4_base: 0x%016lx\n", pdpa);
+		printf("pml4_offset: 0x%016x\n", offs);
+		p_addr = pdpa + offs;
+		printf("pml4e addr: 0x%016lx\n", p_addr);
+		read_mem(vm, p_addr, &pde, sizeof(pdpa));
+		/* pde = *((pd)[offs]); */
+		printf("pml4e: 0x%016llx\n", pde);
+		/* pde = *((pd)[offs]); */
+
+
+		/* Large pages are different, break early if we run into one. */
+		if ((pde & (PG_PS|PG_V)) != PG_V) {
+			lev = lev - 1;
+			break;
+		}
+
+		pdpa = pde & PG_FRAME;
+		/* 4096/8 == 512 == 2^9 entries per level */
+		shift -= 9;
+		mask >>= 9;
+	}
+
+	if (lev == 0 && (pde & PG_V)) {
+		if (guest_pa != NULL) {
+			*guest_pa = pdpa | (guest_va & PAGE_MASK);
+			read_mem(vm, *guest_pa, &p, sizeof(p));
+			printf("shuold be %x\n", p);
+			return 1;
+		}
+	}
+	/* if (level == 1 && (ptes[offs] & (PG_PS|PG_V)) == (PG_PS|PG_V)) { */
+	/* 	if (pap != NULL) */
+	/* 		*pap = (ptes[offs] & PG_LGFRAME) | (va & PAGE_MASK_L2); */
+	/* 	return (TRUE); */
+	/* } */
+
+	/* log_info("valid: %d", pde & PG_V); */
+	/* p_addr = (pdpa & PG_FRAME) + (addr & 0xfff); */
+	/* p_addr = pdpa + (addr & 0xfff); */
+	/* fatal("here"); */
+	return 0;
+}
+
 /*
  * vm_create
  *
@@ -4531,6 +4608,7 @@ svm_handle_exit(struct vcpu *vcpu)
 	uint64_t exit_reason, rflags;
 	int update_rip, ret = 0;
 	struct vmcb *vmcb = (struct vmcb *)vcpu->vc_control_va;
+	paddr_t p_addr;
 
 	update_rip = 0;
 	exit_reason = vcpu->vc_gueststate.vg_exit_reason;
@@ -4583,6 +4661,8 @@ svm_handle_exit(struct vcpu *vcpu)
 		update_rip = 1;
 		break;
 	case SVM_VMEXIT_HLT:
+		vmm_pmap_extract_guest(vcpu, vmcb->v_rip, &p_addr);
+		printf("got answer: %16lx\n", p_addr);
 		ret = svm_handle_hlt(vcpu);
 		update_rip = 1;
 		break;
