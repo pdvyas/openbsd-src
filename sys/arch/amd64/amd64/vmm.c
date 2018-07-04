@@ -1024,7 +1024,7 @@ vm_create_check_mem_ranges(struct vm_create_params *vcp)
 /*
  * read_mem
  *
- * Reads memory at guest paddr 'src' into 'buf'.
+ * Reads memory at guest paddr 'gpa' into 'buf'.
  *
  * Parameters:
  *  vm: the VM
@@ -1070,7 +1070,6 @@ vmm_pmap_extract_guest_impl(struct vcpu *vcpu, uint64_t cr3, vaddr_t guest_va,
 		offset = offset * sizeof(uint64_t);
 		if(read_mem(vm, pdpa + offset, &pde, sizeof(pde)))
 			return (EINVAL);
-		printf("From readmem: %16llx\n", pde);
 
 
 		/* Large pages are different, break early if we run into one. */
