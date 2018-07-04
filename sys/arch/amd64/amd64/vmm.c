@@ -1087,6 +1087,7 @@ find_gpa_range(struct vm *vm, paddr_t gpa, size_t len)
  * Reads memory at guest paddr 'src' into 'buf'.
  *
  * Parameters:
+ *  vm: the VM
  *  src: the source paddr_t in the guest VM to read from.
  *  buf: destination (local) buffer
  *  len: number of bytes to read
@@ -1132,24 +1133,10 @@ int
 vmm_pmap_extract_guest_impl(struct vcpu *vcpu, uint64_t cr3, vaddr_t guest_va,
     paddr_t *guest_pa)
 {                                                                             
-	/* int ret; */
-	/* struct vm_create_params *vcp; */
-	/* struct vm_rwregs_params	   vrp; */
-	/* uint64_t pml4_base, pml4e_addr, pml4_offset, pml4e; */
-	/* uint64_t pdpte_base, pdpte_offset, pdpte_addr, pdpte; */
-	/* uint64_t pde_base, pde_offset, pde_addr, pde; */
-	/* uint64_t pt_base, pt_offset, pt_addr, pt; */
-	/* uint64_t p_addr; */
-	/* uint8_t p; */
-	/* struct vcpu_reg_state *vrs; */
-
 	u_long mask, shift;
-	pt_entry_t ptes;
-	pt_entry_t *pd;
-	int lev, offs;
-	pd = &ptes;
+	int level, offset;
 	pd_entry_t pde;
-	paddr_t pdpa, p_addr;
+	paddr_t pdpa;
 	struct vm *vm;
 
 	vm = vcpu->vc_parent;
@@ -1157,24 +1144,15 @@ vmm_pmap_extract_guest_impl(struct vcpu *vcpu, uint64_t cr3, vaddr_t guest_va,
 	shift = L4_SHIFT;
 	mask = L4_MASK;
 
-	uint8_t p;
-
-	for (lev = PTP_LEVELS; lev > 0; lev--) {
-		offs = (VA_SIGN_POS(guest_va) & mask) >> shift;
-		offs = offs * sizeof(uint64_t);
-		printf("pml4_base: 0x%016lx\n", pdpa);
-		printf("pml4_offset: 0x%016x\n", offs);
-		p_addr = pdpa + offs;
-		printf("pml4e addr: 0x%016lx\n", p_addr);
-		read_mem(vm, p_addr, &pde, sizeof(pdpa));
-		/* pde = *((pd)[offs]); */
-		printf("pml4e: 0x%016llx\n", pde);
-		/* pde = *((pd)[offs]); */
+	for (level = PTP_LEVELS; level > 0; level--) {
+		offset = (VA_SIGN_POS(guest_va) & mask) >> shift;
+		offset = offset * sizeof(uint64_t);
+		read_mem(vm, pdpa + offset, &pde, sizeof(pdpa));
 
 
 		/* Large pages are different, break early if we run into one. */
 		if ((pde & (PG_PS|PG_V)) != PG_V) {
-			lev = lev - 1;
+			level = level - 1;
 			break;
 		}
 
@@ -1184,30 +1162,25 @@ vmm_pmap_extract_guest_impl(struct vcpu *vcpu, uint64_t cr3, vaddr_t guest_va,
 		mask >>= 9;
 	}
 
-	if (lev == 0 && (pde & PG_V)) {
+	if (level == 0 && (pde & PG_V)) {
 		if (guest_pa != NULL) {
 			*guest_pa = pdpa | (guest_va & PAGE_MASK);
-			read_mem(vm, *guest_pa, &p, sizeof(p));
-			printf("shuold be %x\n", p);
-			return 1;
+			return (0);
 		}
 	}
-	/* if (level == 1 && (ptes[offs] & (PG_PS|PG_V)) == (PG_PS|PG_V)) { */
-	/* 	if (pap != NULL) */
-	/* 		*pap = (ptes[offs] & PG_LGFRAME) | (va & PAGE_MASK_L2); */
-	/* 	return (TRUE); */
-	/* } */
 
-	/* log_info("valid: %d", pde & PG_V); */
-	/* p_addr = (pdpa & PG_FRAME) + (addr & 0xfff); */
-	/* p_addr = pdpa + (addr & 0xfff); */
-	/* fatal("here"); */
-	return 0;
+	if (level == 1 && (pde & PG_V)) {
+		if (guest_pa != NULL) {
+			*guest_pa = pdpa | (guest_va & PAGE_MASK_L2);
+			return (0);
+		}
+	}
+	return (EINVAL);
 }
 
-int                                                                           
+int
 vmm_pmap_extract_guest(struct vcpu *vcpu, vaddr_t guest_va, paddr_t *guest_pa)
-{                                                                             
+{
 	struct vmcb *vmcb = (struct vmcb *)vcpu->vc_control_va;
 	uint64_t cr3;
 	if (vmm_softc->mode == VMM_MODE_VMX ||
