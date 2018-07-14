@@ -1497,7 +1497,14 @@ vcpu_exit(struct vm_run_params *vrp)
 	case VMX_EXIT_HLT:
 	case SVM_VMEXIT_HLT:
 		vrs = get_regs();
+		log_info("----");
+		log_info("EXIT REASON: %d", vrp->vrp_exit_reason);
+		log_info("CR4: 0x%lx", vrs->vrs_crs[VCPU_REGS_CR4] & 0x20);
+		/* log_info("RIP: 0x%lx", vrs->vrs_gprs[VCPU_REGS_RIP]); */
 		gva2gpa(vrs->vrs_crs[VCPU_REGS_CR3], vrs->vrs_gprs[VCPU_REGS_RIP] - 1);
+		if (vrs->vrs_gprs[VCPU_REGS_RIP])
+			fatal("here");
+		log_info("----");
 		ret = pthread_mutex_lock(&vcpu_run_mtx[vrp->vrp_vcpu_id]);
 		if (ret) {
 			log_warnx("%s: can't lock vcpu mutex (%d)",
@@ -1947,6 +1954,10 @@ void dump_regs(struct vcpu_reg_state *vrs) {
         /* log_info("VCPU_REGS_RSP         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RSP]); */
         /* log_info("VCPU_REGS_RBP         : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RBP]); */
         log_info("VCPU_REGS_RIP    : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RIP]);
+        log_info("VCPU_REGS_PDPTE0    : 0x%016llx", vrs->vrs_crs[VCPU_REGS_PDPTE0]);
+        log_info("VCPU_REGS_PDPTE1    : 0x%016llx", vrs->vrs_crs[VCPU_REGS_PDPTE1]);
+        log_info("VCPU_REGS_PDPTE2    : 0x%016llx", vrs->vrs_crs[VCPU_REGS_PDPTE2]);
+        log_info("VCPU_REGS_PDPTE3    : 0x%016llx", vrs->vrs_crs[VCPU_REGS_PDPTE3]);
         /* log_info("VCPU_REGS_RFLAGS   : 0x%016llx", vrs->vrs_gprs[VCPU_REGS_RFLAGS]); */
         /* log_info("VCPU_REGS_CR0         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR0]); */
         /* log_info("VCPU_REGS_CR2         : 0x%016llx", vrs->vrs_crs[VCPU_REGS_CR2]); */
@@ -1971,8 +1982,62 @@ void dump_regs(struct vcpu_reg_state *vrs) {
         /* log_info("VCPU_REGS_KGSBASE     : 0x%016llx", vrs->vrs_msrs[VCPU_REGS_KGSBASE]); */
 }
 
-uint64_t gva2gpa(uint64_t cr3, vaddr_t addr) {
+uint64_t gva2gpax(uint64_t cr3, vaddr_t addr) {
 	return 0;
+	struct vcpu_reg_state *vrs;
+	uint32_t pdptd;
+	int pdpte_n = (addr >> 30);
+	int offset;
+	uint64_t pdpe;
+	uint64_t pd;
+	uint64_t pde;
+	uint64_t pt;
+	uint64_t pte;
+	uint64_t p;
+	uint8_t x;
+
+	/* vrs = get_regs(); */
+	/* dump_regs(vrs); */
+	log_info("CR3   : 0x%016llx", cr3);
+	pdptd = (cr3 & 0xffffffe0);
+	offset = pdpte_n*sizeof(uint64_t);
+	log_info("RIP   : 0x%016llx", addr);
+	/* log_info("PDPE : 0x%016llx", pdpe); */
+	/* log_info("PDPTDN: 0x%016llx", pdpte_n); */
+
+	/* pdpte = vrs->vrs_crs[VCPU_REGS_PDPTE0 + pdpte_n]; */
+	/* read_mem(pdptd + (pdpte_n* sizeof(uint64_t)), &pdpte, sizeof(pdpte)); */
+	read_mem(pdptd + offset, &pdpe, sizeof(pdpe));
+	log_info("PDPE: 0x%016llx", pdpe);
+	/* log_info("PDPTE: 0x%016llx", pdpte); */
+
+
+	pd = pdpe & 0xffffffffff000;
+	/* pd = pdpe & 0xfffffffe00000; */
+	offset = ((addr & 0x3fc00000) >> 18);
+	read_mem(pd + offset, &pde, sizeof(pde));
+	/* log_info("PDP : 0x%016llx", pd + offset); */
+	log_info("PDE: 0x%016llx", pde);
+
+	pt = pde & 0xffffffffff000;
+	offset = ((addr & 0x1ff000) >> 9); // * sizeof(uint64_t);
+	read_mem(pt + offset, &pte, sizeof(pte));
+	log_info("PTE: 0x%016llx", pte);
+
+	p = pte & 0xffffffffff000;
+	offset = (addr & 0xfff);
+	read_mem(p + offset, &x, sizeof(x));
+	log_info("FINAL: 0x%x", x);
+
+	/* offset = ((addr >> 20) & 0x2ff) << 2; */
+	/* pd = (pdpe & 0xfff) + offset; */
+	/* offset = ((addr >> 20) & 0x2ff); */
+	/* pd = (pdpte >> 12) + offset*sizeof(uint64_t); */
+
+
+}
+
+uint64_t gva2gpa(uint64_t cr3, vaddr_t addr) {
 	/* int ret; */
 	/* struct vm_create_params *vcp; */
 	/* struct vm_rwregs_params	   vrp; */
@@ -1984,25 +2049,40 @@ uint64_t gva2gpa(uint64_t cr3, vaddr_t addr) {
 	/* uint8_t p; */
 	/* struct vcpu_reg_state *vrs; */
 
-	u_long mask, shift;
+	u_long mask, shift, ss;
 	pt_entry_t ptes;
 	pt_entry_t *pd;
-	int lev, offs;
+	int lev, offs, offs2;
 	pd = &ptes;
 	pd_entry_t pde;
 	paddr_t pdpa, p_addr;
 
+
+
+
+	lev = PTP_LEVELS;
 	pdpa = cr3;
 	shift = L4_SHIFT;
+	ss = 36;
 	mask = L4_MASK;
 
+	log_info("CR3   : 0x%016llx", cr3);
+	pdpa = (cr3 & 0xffffffe0);
+	ss = 27;
+	lev = 3;
+	mask = L3_MASK;
+	log_info("RIP   : 0x%016llx", addr);
 	uint8_t p;
 
 	/* gva2gpa_w(cr3, addr); */
 
-	for (lev = PTP_LEVELS; lev > 0; lev--) {
-		offs = (VA_SIGN_POS(addr) & mask) >> shift;
-		offs = offs * sizeof(uint64_t);
+	for (; lev > 0; lev--) {
+		/* offs = (VA_SIGN_POS(addr) & mask) >> shift; */
+		/* offs = offs * sizeof(uint64_t); */
+		/* log_info("org offset: 0x%016lx", offs); */
+		offs = (addr & mask) >> ss;
+		log_info("new offset: 0x%016lx", offs2);
+
 		log_info("pml4_base: 0x%016lx", pdpa);
 		log_info("pml4_offset: 0x%016x", offs);
 		p_addr = pdpa + offs;
@@ -2021,6 +2101,7 @@ uint64_t gva2gpa(uint64_t cr3, vaddr_t addr) {
 		pdpa = pde & PG_FRAME;
 		/* 4096/8 == 512 == 2^9 entries per level */
 		shift -= 9;
+		ss -= 9;
 		mask >>= 9;
 	}
 
@@ -2122,20 +2203,40 @@ uint64_t gva2gpa(uint64_t cr3, vaddr_t addr) {
 /* 	return p_addr; */
 /* } */
 /*  */
+/* struct vcpu_reg_state* */
+/* get_regs() { */
+/* 	struct vm_rwregs_params	   vrp; */
+/* 	struct vcpu_reg_state *vrs; */
+/* 	struct vm_create_params *vcp; */
+/* 	int ret; */
+/* 	vcp = &current_vm->vm_params.vmc_params; */
+/* 	vrp.vrwp_vm_id = vcp->vcp_id; */
+/* 	vrp.vrwp_vcpu_id = 0; */
+/* 	vrp.vrwp_mask = VM_RWREGS_ALL; */
+/* 	vrp.vrwp_mask = -1; */
+/* 	vrs = &vrp.vrwp_regs; */
+/* 	if ((ret = ioctl(env->vmd_fd, VMM_IOC_READREGS, &vrp))) { */
+/* 		log_warn("%s: readregs failed", __func__); */
+/* 	} */
+/* 	return vrs; */
+/* } */
+
 struct vcpu_reg_state*
 get_regs() {
-	struct vm_rwregs_params	   vrp;
-	struct vcpu_reg_state *vrs;
-	struct vm_create_params *vcp;
-	int ret;
-	vcp = &current_vm->vm_params.vmc_params;
-	vrp.vrwp_vm_id = vcp->vcp_id;
-	vrp.vrwp_vcpu_id = 0;
-	vrp.vrwp_mask = VM_RWREGS_ALL;
-	vrp.vrwp_mask = -1;
-	vrs = &vrp.vrwp_regs;
-	if ((ret = ioctl(env->vmd_fd, VMM_IOC_READREGS, &vrp))) {
-		log_warn("%s: readregs failed", __func__);
-	}
-	return vrs;
+        struct vm_rwregs_params    *vrp;
+        struct vcpu_reg_state *vrs;
+        struct vm_create_params *vcp;
+        int ret;
+        vrp = malloc(sizeof(struct vm_run_params));
+        vcp = &current_vm->vm_params.vmc_params;
+        vrp->vrwp_vm_id = vcp->vcp_id;
+        vrp->vrwp_vcpu_id = 0;
+        vrp->vrwp_mask = VM_RWREGS_ALL;
+        vrp->vrwp_mask = -1;
+        vrs = &vrp->vrwp_regs;
+        if ((ret = ioctl(env->vmd_fd, VMM_IOC_READREGS, vrp))) {
+	                log_warn("%s: readregs failed", __func__);
+	        }
+        return vrs;
 }
+
