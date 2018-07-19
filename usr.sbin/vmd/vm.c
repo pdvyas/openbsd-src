@@ -90,6 +90,8 @@ void restore_mem(int, struct vm_create_params *);
 void pause_vm(struct vm_create_params *);
 void unpause_vm(struct vm_create_params *);
 
+int vcpu_read_guest_linear(uint32_t, uint32_t, uint64_t, uint8_t, void*);
+
 static struct vm_mem_range *find_gpa_range(struct vm_create_params *, paddr_t,
     size_t);
 
@@ -1468,6 +1470,7 @@ int
 vcpu_exit(struct vm_run_params *vrp)
 {
 	int ret;
+	uint8_t p;
 
 	switch (vrp->vrp_exit_reason) {
 	case VMX_EXIT_INT_WINDOW:
@@ -1493,6 +1496,12 @@ vcpu_exit(struct vm_run_params *vrp)
 		break;
 	case VMX_EXIT_HLT:
 	case SVM_VMEXIT_HLT:
+               log_debug("RIP1=0x%016llx",vrp->vrp_exit->vrs.vrs_gprs[VCPU_REGS_RIP]);
+               vcpu_read_guest_linear(vrp->vrp_vm_id,
+                   vrp->vrp_vcpu_id, vrp->vrp_exit->vrs.vrs_gprs[VCPU_REGS_RIP] - 1,
+                   sizeof(p), &p);
+
+		fatal("here");
 		ret = pthread_mutex_lock(&vcpu_run_mtx[vrp->vrp_vcpu_id]);
 		if (ret) {
 			log_warnx("%s: can't lock vcpu mutex (%d)",
@@ -1922,4 +1931,112 @@ get_input_data(struct vm_exit *vei, uint32_t *data)
 		    vei->vei.vei_size);
 	}
 
+}
+
+/*
+ * vcpu_read_guest_linear
+ *
+ * Reads 'sz' bytes of guest linear memory from address 'addr' and places
+ * the result in 'buf'.
+ *
+ * Parameters:
+ *  vm_id: VM id of guest ID to read from
+ *  vcpu_id: VCPU id in guest VM to read from (for page tables)
+ *  addr: guest linear address to read
+ *  sz: number of bytes to read
+ *  buf: target location for bytes
+ *
+ * Return values:
+ *  0: the bytes were successfully read
+ *  EINVAL: invalid buffer
+ *  EFAULT: the bytes could not be read from 'addr'. Zero or more bytes may
+ *   have been read.
+ *  Other errno-style errors returned from ioctl.
+ * XXX check processor mode
+ * XXX check bits in PTEs (size, present, etc)
+ */
+int
+vcpu_read_guest_linear(uint32_t vm_id, uint32_t vcpu_id, uint64_t addr,
+    uint8_t sz, void *buf)
+{
+	struct vm_rwregs_params vrp;
+	int ret, level, shift;
+	uint64_t pte, pt_paddr, pte_paddr, cr3, paddr, mask, low_mask,
+	   high_mask;
+	uint16_t ptidx;
+
+	if (!buf)
+		return (EINVAL);
+
+	memset(&vrp, 0, sizeof(vrp));
+	vrp.vrwp_vm_id = vm_id;
+	vrp.vrwp_mask = VM_RWREGS_ALL;
+	vrp.vrwp_vcpu_id = vcpu_id;
+	
+	if ((ret = ioctl(env->vmd_fd, VMM_IOC_READREGS, &vrp))) {
+		log_warn("%s: readregs failed", __func__);
+		return (ret);
+	}
+
+	cr3 = vrp.vrwp_regs.vrs_crs[VCPU_REGS_CR3];
+	pt_paddr = cr3;
+
+	log_debug("%s: read guest linear addr 0x%llx sz=0x%x cr3=0x%llx",
+	    __func__, addr, sz, cr3);
+
+	/* 4 level paging */
+	if ((vrp.vrwp_regs.vrs_crs[VCPU_REGS_CR0] & CR0_PE) &&
+			(vrp.vrwp_regs.vrs_crs[VCPU_REGS_CR4] & CR4_PAE) &&
+			(vrp.vrwp_regs.vrs_msrs[VCPU_REGS_EFER] & EFER_LME)) {
+		level = 4;
+		mask = L4_MASK;
+		shift = L4_SHIFT;
+	/* PAE paging */
+	} else if ((vrp.vrwp_regs.vrs_crs[VCPU_REGS_CR0] & CR0_PE) &&
+			(vrp.vrwp_regs.vrs_crs[VCPU_REGS_CR4] & CR4_PAE) &&
+			(!(vrp.vrwp_regs.vrs_msrs[VCPU_REGS_EFER] & EFER_LME))) {
+		level = 3;
+		mask = L3_MASK;
+		shift = L3_SHIFT;
+	} else {
+		log_debug("UNKNOWN!");
+	}
+
+	for (;level > 0; level--) {
+		ptidx = (addr & mask) >> shift;
+		pte_paddr = (pt_paddr) + (ptidx * sizeof(uint64_t));
+
+		log_debug("%s: reading pte level %d @ 0x%llx", __func__,
+		    level, pte_paddr);
+		if (read_mem(pte_paddr, &pte, sizeof(uint64_t))) {
+			log_warn("%s: failed to read pml4e", __func__);
+			return (EFAULT);
+		}
+
+		if (!(pte & PG_V))
+			return (EFAULT);
+
+		if (pte & PG_PS)
+			break;
+
+		if (level > 1) {
+			pt_paddr = pte & PG_FRAME;
+			shift -=9;
+			mask = mask >> 9;
+		}
+	}
+
+	low_mask = (1 << shift) - 1;
+	high_mask = ~((1ULL << 63) | low_mask);
+	paddr = (pte & high_mask) | (addr & low_mask);
+
+	log_debug("%s: read guest linear addr 0x%llx sz=0x%x paddr=0x%llx",
+	    __func__, addr, sz, paddr);
+
+	if (read_mem(paddr, buf, sz)) {
+		log_warn("%s: failed to read pml1e", __func__);
+		return (EFAULT);
+	}
+
+	return 0;
 }
