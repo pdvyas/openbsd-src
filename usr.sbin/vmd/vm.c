@@ -90,7 +90,7 @@ void restore_mem(int, struct vm_create_params *);
 void pause_vm(struct vm_create_params *);
 void unpause_vm(struct vm_create_params *);
 
-int vcpu_read_guest_linear(uint32_t, uint32_t, uint64_t, uint8_t, void*);
+int vcpu_read_guest_linear(struct vcpu_reg_state *, uint64_t, uint8_t, void*);
 
 static struct vm_mem_range *find_gpa_range(struct vm_create_params *, paddr_t,
     size_t);
@@ -1497,10 +1497,11 @@ vcpu_exit(struct vm_run_params *vrp)
 	case VMX_EXIT_HLT:
 	case SVM_VMEXIT_HLT:
                log_debug("RIP1=0x%016llx",vrp->vrp_exit->vrs.vrs_gprs[VCPU_REGS_RIP]);
-               vcpu_read_guest_linear(vrp->vrp_vm_id,
-                   vrp->vrp_vcpu_id, vrp->vrp_exit->vrs.vrs_gprs[VCPU_REGS_RIP] - 1,
+	       /* log_info("CPL is %d", vrp->vrp_exit->cpl); */
+               vcpu_read_guest_linear(&vrp->vrp_exit->vrs, vrp->vrp_exit->vrs.vrs_gprs[VCPU_REGS_RIP] - 1,
                    sizeof(p), &p);
 
+	        log_info("HLT is: 0x%x", p);
 		fatal("here");
 		ret = pthread_mutex_lock(&vcpu_run_mtx[vrp->vrp_vcpu_id]);
 		if (ret) {
@@ -1956,10 +1957,9 @@ get_input_data(struct vm_exit *vei, uint32_t *data)
  * XXX check bits in PTEs (size, present, etc)
  */
 int
-vcpu_read_guest_linear(uint32_t vm_id, uint32_t vcpu_id, uint64_t addr,
+vcpu_read_guest_linear(struct vcpu_reg_state *vrs, uint64_t addr,
     uint8_t sz, void *buf)
 {
-	struct vm_rwregs_params vrp;
 	int ret, level, shift;
 	uint64_t pte, pt_paddr, pte_paddr, cr3, paddr, mask, low_mask,
 	   high_mask;
@@ -1968,33 +1968,28 @@ vcpu_read_guest_linear(uint32_t vm_id, uint32_t vcpu_id, uint64_t addr,
 	if (!buf)
 		return (EINVAL);
 
-	memset(&vrp, 0, sizeof(vrp));
-	vrp.vrwp_vm_id = vm_id;
-	vrp.vrwp_mask = VM_RWREGS_ALL;
-	vrp.vrwp_vcpu_id = vcpu_id;
-	
-	if ((ret = ioctl(env->vmd_fd, VMM_IOC_READREGS, &vrp))) {
-		log_warn("%s: readregs failed", __func__);
-		return (ret);
+	if (!(vrs->vrs_crs[VCPU_REGS_CR0] & CR0_PG)) {
+		paddr = addr;
+		goto out;
 	}
 
-	cr3 = vrp.vrwp_regs.vrs_crs[VCPU_REGS_CR3];
+	cr3 = vrs->vrs_crs[VCPU_REGS_CR3];
 	pt_paddr = cr3;
 
 	log_debug("%s: read guest linear addr 0x%llx sz=0x%x cr3=0x%llx",
 	    __func__, addr, sz, cr3);
 
 	/* 4 level paging */
-	if ((vrp.vrwp_regs.vrs_crs[VCPU_REGS_CR0] & CR0_PE) &&
-			(vrp.vrwp_regs.vrs_crs[VCPU_REGS_CR4] & CR4_PAE) &&
-			(vrp.vrwp_regs.vrs_msrs[VCPU_REGS_EFER] & EFER_LME)) {
+	if ((vrs->vrs_crs[VCPU_REGS_CR0] & CR0_PE) &&
+			(vrs->vrs_crs[VCPU_REGS_CR4] & CR4_PAE) &&
+			(vrs->vrs_msrs[VCPU_REGS_EFER] & EFER_LMA)) {
 		level = 4;
 		mask = L4_MASK;
 		shift = L4_SHIFT;
 	/* PAE paging */
-	} else if ((vrp.vrwp_regs.vrs_crs[VCPU_REGS_CR0] & CR0_PE) &&
-			(vrp.vrwp_regs.vrs_crs[VCPU_REGS_CR4] & CR4_PAE) &&
-			(!(vrp.vrwp_regs.vrs_msrs[VCPU_REGS_EFER] & EFER_LME))) {
+	} else if ((vrs->vrs_crs[VCPU_REGS_CR0] & CR0_PE) &&
+			(vrs->vrs_crs[VCPU_REGS_CR4] & CR4_PAE) &&
+			(!(vrs->vrs_msrs[VCPU_REGS_EFER] & EFER_LMA))) {
 		level = 3;
 		mask = L3_MASK;
 		shift = L3_SHIFT;
@@ -2013,9 +2008,17 @@ vcpu_read_guest_linear(uint32_t vm_id, uint32_t vcpu_id, uint64_t addr,
 			return (EFAULT);
 		}
 
+		/* XXX: Set CR2  */
 		if (!(pte & PG_V))
 			return (EFAULT);
 
+		pte = pte | PG_U;
+		if (write_mem(pte_paddr, &pte, sizeof(uint64_t))) {
+			log_warn("%s: failed to read pml4e", __func__);
+			return (EFAULT);
+		}
+
+		/* XXX: EINVAL if in 32 bit PG_PS is 1 but CR4.PSE is 0 */
 		if (pte & PG_PS)
 			break;
 
@@ -2033,6 +2036,7 @@ vcpu_read_guest_linear(uint32_t vm_id, uint32_t vcpu_id, uint64_t addr,
 	log_debug("%s: read guest linear addr 0x%llx sz=0x%x paddr=0x%llx",
 	    __func__, addr, sz, paddr);
 
+out:
 	if (read_mem(paddr, buf, sz)) {
 		log_warn("%s: failed to read pml1e", __func__);
 		return (EFAULT);
