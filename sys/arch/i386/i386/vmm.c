@@ -1432,7 +1432,7 @@ vcpu_readregs_svm(struct vcpu *vcpu, uint64_t regmask,
 /*
  * vcpu_writeregs_vmx
  *
- * Writes 'vcpu's registers
+ * Writes VCPU registers
  *
  * Parameters:
  *  vcpu: the vcpu that has to get its registers written to
@@ -1509,11 +1509,20 @@ vcpu_writeregs_vmx(struct vcpu *vcpu, uint64_t regmask, int loadvmcs,
 			goto errout;
 	}
 	if (regmask & VM_RWREGS_CRS) {
+		vcpu->vc_gueststate.vg_xcr0 = crs[VCPU_REGS_XCR0];
 		if (vmwrite(VMCS_GUEST_IA32_CR0, crs[VCPU_REGS_CR0]))
 			goto errout;
 		if (vmwrite(VMCS_GUEST_IA32_CR3, crs[VCPU_REGS_CR3]))
 			goto errout;
 		if (vmwrite(VMCS_GUEST_IA32_CR4, crs[VCPU_REGS_CR4]))
+			goto errout;
+		if (vmwrite(VMCS_GUEST_PDPTE0, crs[VCPU_REGS_PDPTE0]))
+			goto errout;
+		if (vmwrite(VMCS_GUEST_PDPTE1, crs[VCPU_REGS_PDPTE1]))
+			goto errout;
+		if (vmwrite(VMCS_GUEST_PDPTE2, crs[VCPU_REGS_PDPTE2]))
+			goto errout;
+		if (vmwrite(VMCS_GUEST_PDPTE3, crs[VCPU_REGS_PDPTE3]))
 			goto errout;
 	}
 
@@ -1932,6 +1941,8 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	ret = 0;
 	ug = 0;
 
+	cr0 = vrs->vrs_crs[VCPU_REGS_CR0];
+
 	if (vcpu_reload_vmcs_vmx(&vcpu->vc_control_pa))
 		return (EINVAL);
 
@@ -1977,11 +1988,13 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	}
 
 	if (vcpu_vmx_compute_ctrl(ctrlval, ctrl, want1, want0, &pinbased)) {
+		DPRINTF("%s: error computing pinbased controls\n", __func__);
 		ret = EINVAL;
 		goto exit;
 	}
 
 	if (vmwrite(VMCS_PINBASED_CTLS, pinbased)) {
+		DPRINTF("%s: error setting pinbased controls\n", __func__);
 		ret = EINVAL;
 		goto exit;
 	}
@@ -2046,7 +2059,8 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	 *
 	 * If we have unrestricted guest capability, we must be able to set
 	 * the following:
-	 * IA32_VMX_UNRESTRICTED_GUEST - enable unrestricted guest
+	 * IA32_VMX_UNRESTRICTED_GUEST - enable unrestricted guest (if caller
+	 *     specified CR0_PG | CR0_PE in %cr0 in the 'vrs' parameter)
 	 */
 	want1 = 0;
 
@@ -2065,8 +2079,10 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	    IA32_VMX_ACTIVATE_SECONDARY_CONTROLS, 1)) {
 		if (vcpu_vmx_check_cap(vcpu, IA32_VMX_PROCBASED2_CTLS,
 		    IA32_VMX_UNRESTRICTED_GUEST, 1)) {
-			want1 |= IA32_VMX_UNRESTRICTED_GUEST;
-			ug = 1;
+			if ((cr0 & (CR0_PE | CR0_PG)) == 0) {
+				want1 |= IA32_VMX_UNRESTRICTED_GUEST;
+				ug = 1;
+			}
 		}
 	}
 
@@ -2075,11 +2091,15 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	ctrl = IA32_VMX_PROCBASED2_CTLS;
 
 	if (vcpu_vmx_compute_ctrl(ctrlval, ctrl, want1, want0, &procbased2)) {
+		DPRINTF("%s: error computing secondary procbased controls\n",
+		     __func__);
 		ret = EINVAL;
 		goto exit;
 	}
 
 	if (vmwrite(VMCS_PROCBASED2_CTLS, procbased2)) {
+		DPRINTF("%s: error setting secondary procbased controls\n",
+		     __func__);
 		ret = EINVAL;
 		goto exit;
 	}
@@ -2103,11 +2123,13 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	}
 
 	if (vcpu_vmx_compute_ctrl(ctrlval, ctrl, want1, want0, &exit)) {
+		DPRINTF("%s: error computing exit controls\n", __func__);
 		ret = EINVAL;
 		goto exit;
 	}
 
 	if (vmwrite(VMCS_EXIT_CTLS, exit)) {
+		DPRINTF("%s: error setting exit controls\n", __func__);
 		ret = EINVAL;
 		goto exit;
 	}
@@ -2115,6 +2137,8 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	/*
 	 * Entry ctrls
 	 *
+	 * We must be able to set the following:
+	 * IA32_VMX_IA32E_MODE_GUEST (if no unrestricted guest)
 	 * We must be able to clear the following:
 	 * IA32_VMX_ENTRY_TO_SMM - enter to SMM
 	 * IA32_VMX_DEACTIVATE_DUAL_MONITOR_TREATMENT
@@ -2233,17 +2257,59 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 		cr3 = vrs->vrs_crs[VCPU_REGS_CR3];
 
 	/*
-	 * Determine default CR4 as per Intel SDM A.8
-	 * All flexible bits are set to 0
+	 * Determine which bits in CR4 have to be set to a fixed
+	 * value as per Intel SDM A.8.
+	 * CR4 bits in the vrs parameter must match these, except
+	 * CR4_VMXE - we add that here since it must always be set.
 	 */
-	cr4 = (curcpu()->ci_vmm_cap.vcc_vmx.vmx_cr4_fixed0) &
+	want1 = (curcpu()->ci_vmm_cap.vcc_vmx.vmx_cr4_fixed0) &
 	    (curcpu()->ci_vmm_cap.vcc_vmx.vmx_cr4_fixed1);
+	want0 = ~(curcpu()->ci_vmm_cap.vcc_vmx.vmx_cr4_fixed0) &
+	    ~(curcpu()->ci_vmm_cap.vcc_vmx.vmx_cr4_fixed1);
 
-	if (ug == 0)
-		cr4 |= CR4_PSE;
+	cr4 = vrs->vrs_crs[VCPU_REGS_CR4] | CR4_VMXE;
+
+	if ((cr4 & want1) != want1) {
+		ret = EINVAL;
+		goto exit;
+	}
+
+	if ((~cr4 & want0) != want0) {
+		ret = EINVAL;
+		goto exit;
+	}
+
+	cr3 = vrs->vrs_crs[VCPU_REGS_CR3];
+
+	/* Restore PDPTEs if 32-bit PAE paging is being used */
+	if (cr3 && (cr4 & CR4_PAE) &&
+	    !(vrs->vrs_msrs[VCPU_REGS_EFER] & EFER_LMA)) {
+		if (vmwrite(VMCS_GUEST_PDPTE0,
+		    vrs->vrs_crs[VCPU_REGS_PDPTE0])) {
+			ret = EINVAL;
+			goto exit;
+		}
+
+		if (vmwrite(VMCS_GUEST_PDPTE1,
+		    vrs->vrs_crs[VCPU_REGS_PDPTE1])) {
+			ret = EINVAL;
+			goto exit;
+		}
+
+		if (vmwrite(VMCS_GUEST_PDPTE2,
+		    vrs->vrs_crs[VCPU_REGS_PDPTE2])) {
+			ret = EINVAL;
+			goto exit;
+		}
+
+		if (vmwrite(VMCS_GUEST_PDPTE3,
+		    vrs->vrs_crs[VCPU_REGS_PDPTE3])) {
+			ret = EINVAL;
+			goto exit;
+		}
+	}
 
 	vrs->vrs_crs[VCPU_REGS_CR0] = cr0;
-	vrs->vrs_crs[VCPU_REGS_CR3] = cr3;
 	vrs->vrs_crs[VCPU_REGS_CR4] = cr4;
 
 	/*
@@ -2252,73 +2318,122 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	msr_store = (struct vmx_msr_store *)vcpu->vc_vmx_msr_exit_load_va;
 	msr_store[0].vms_index = MSR_EFER;
 	msr_store[0].vms_data = rdmsr(MSR_EFER);
+	msr_store[1].vms_index = MSR_STAR;
+	msr_store[1].vms_data = rdmsr(MSR_STAR);
+	msr_store[2].vms_index = MSR_LSTAR;
+	msr_store[2].vms_data = rdmsr(MSR_LSTAR);
+	msr_store[3].vms_index = MSR_CSTAR;
+	msr_store[3].vms_data = rdmsr(MSR_CSTAR);
+	msr_store[4].vms_index = MSR_SFMASK;
+	msr_store[4].vms_data = rdmsr(MSR_SFMASK);
+	msr_store[5].vms_index = MSR_KERNELGSBASE;
+	msr_store[5].vms_data = rdmsr(MSR_KERNELGSBASE);
 
 	/*
 	 * Select guest MSRs to be loaded on entry / saved on exit
 	 */
 	msr_store = (struct vmx_msr_store *)vcpu->vc_vmx_msr_exit_save_va;
 
-	msr_store[0].vms_index = MSR_EFER;
+	msr_store[VCPU_REGS_EFER].vms_index = MSR_EFER;
+	msr_store[VCPU_REGS_STAR].vms_index = MSR_STAR;
+	msr_store[VCPU_REGS_LSTAR].vms_index = MSR_LSTAR;
+	msr_store[VCPU_REGS_CSTAR].vms_index = MSR_CSTAR;
+	msr_store[VCPU_REGS_SFMASK].vms_index = MSR_SFMASK;
+	msr_store[VCPU_REGS_KGSBASE].vms_index = MSR_KERNELGSBASE;
 
 	/*
 	 * Currently we have the same count of entry/exit MSRs loads/stores
 	 * but this is not an architectural requirement.
 	 */
 	if (vmwrite(VMCS_EXIT_MSR_STORE_COUNT, VMX_NUM_MSR_STORE)) {
+		DPRINTF("%s: error setting guest MSR exit store count\n",
+		    __func__);
 		ret = EINVAL;
 		goto exit;
 	}
 
 	if (vmwrite(VMCS_EXIT_MSR_LOAD_COUNT, VMX_NUM_MSR_STORE)) {
+		DPRINTF("%s: error setting guest MSR exit load count\n",
+		    __func__);
 		ret = EINVAL;
 		goto exit;
 	}
 
 	if (vmwrite(VMCS_ENTRY_MSR_LOAD_COUNT, VMX_NUM_MSR_STORE)) {
+		DPRINTF("%s: error setting guest MSR entry load count\n",
+		    __func__);
 		ret = EINVAL;
 		goto exit;
 	}
 
 	if (vmwrite(VMCS_EXIT_STORE_MSR_ADDRESS,
 	    vcpu->vc_vmx_msr_exit_save_pa)) {
+		DPRINTF("%s: error setting guest MSR exit store address\n",
+		    __func__);
 		ret = EINVAL;
 		goto exit;
 	}
 
 	if (vmwrite(VMCS_EXIT_STORE_MSR_ADDRESS_HI, 0)) {
+		DPRINTF("%s: error setting guest MSR exit store address HI\n",
+		    __func__);
 		ret = EINVAL;
 		goto exit;
 	}
 
 	if (vmwrite(VMCS_EXIT_LOAD_MSR_ADDRESS,
 	    vcpu->vc_vmx_msr_exit_load_pa)) {
+		DPRINTF("%s: error setting guest MSR exit load address\n",
+		    __func__);
 		ret = EINVAL;
 		goto exit;
 	}
 
 	if (vmwrite(VMCS_EXIT_LOAD_MSR_ADDRESS_HI, 0)) {
+		DPRINTF("%s: error setting guest MSR exit load address HI\n",
+		    __func__);
 		ret = EINVAL;
 		goto exit;
 	}
 
 	if (vmwrite(VMCS_ENTRY_LOAD_MSR_ADDRESS,
 	    vcpu->vc_vmx_msr_exit_save_pa)) {
+		DPRINTF("%s: error setting guest MSR entry load address\n",
+		    __func__);
 		ret = EINVAL;
 		goto exit;
 	}
 
 	if (vmwrite(VMCS_ENTRY_LOAD_MSR_ADDRESS_HI, 0)) {
+		DPRINTF("%s: error setting guest MSR entry load address HI\n",
+		    __func__);
 		ret = EINVAL;
 		goto exit;
 	}
 
 	if (vmwrite(VMCS_MSR_BITMAP_ADDRESS,
 	    vcpu->vc_msr_bitmap_pa)) {
+		DPRINTF("%s: error setting guest MSR bitmap address\n",
+		    __func__);
 		ret = EINVAL;
 		goto exit;
 	}
 
 	if (vmwrite(VMCS_MSR_BITMAP_ADDRESS_HI, 0)) {
+		DPRINTF("%s: error setting guest MSR bitmap address HI\n",
+		    __func__);
+		ret = EINVAL;
+		goto exit;
+	}
+
+	if (vmwrite(VMCS_CR4_MASK, CR4_VMXE)) {
+		DPRINTF("%s: error setting guest CR4 mask\n", __func__);
+		ret = EINVAL;
+		goto exit;
+	}
+
+	if (vmwrite(VMCS_CR0_MASK, CR0_NE)) {
+		DPRINTF("%s: error setting guest CR0 mask\n", __func__);
 		ret = EINVAL;
 		goto exit;
 	}
@@ -2350,8 +2465,12 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	/* XXX CR0 shadow */
 	/* XXX CR4 shadow */
 
+	/* xcr0 power on default sets bit 0 (x87 state) */
+	vcpu->vc_gueststate.vg_xcr0 = XCR0_X87 & xsave_mask;
+
 	/* Flush the VMCS */
 	if (vmclear(&vcpu->vc_control_pa)) {
+		DPRINTF("%s: vmclear failed\n", __func__);
 		ret = EINVAL;
 		goto exit;
 	}
@@ -2475,7 +2594,7 @@ vcpu_init_vmx(struct vcpu *vcpu)
 	}
 
 	/* Host CR0 */
-	cr0 = rcr0();
+	cr0 = rcr0() & ~CR0_TS;
 	if (vmwrite(VMCS_HOST_IA32_CR0, cr0)) {
 		ret = EINVAL;
 		goto exit;
