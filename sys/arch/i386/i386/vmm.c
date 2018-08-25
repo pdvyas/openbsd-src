@@ -39,10 +39,10 @@
 
 #include <dev/isa/isareg.h>
 
-/* #define VMM_DEBUG */
+#define VMM_DEBUG
 
 #ifdef VMM_DEBUG
-int vmm_debug = 0;
+int vmm_debug = 1;
 #define DPRINTF(x...)	do { if (vmm_debug) printf(x); } while(0)
 #else
 #define DPRINTF(x...)
@@ -1367,7 +1367,7 @@ vcpu_readregs_vmx(struct vcpu *vcpu, uint64_t regmask,
 			if (vmread(vmm_vmx_sreg_vmcs_fields[i].arid, &ar))
 				goto errout;
 			if (vmread(vmm_vmx_sreg_vmcs_fields[i].baseid,
-			   &sregs[i].vsi_base))
+			    &sregs[i].vsi_base))
 				goto errout;
 
 			sregs[i].vsi_sel = sel;
@@ -1396,6 +1396,14 @@ vcpu_readregs_vmx(struct vcpu *vcpu, uint64_t regmask,
 		if (vmread(VMCS_GUEST_IA32_CR3, &crs[VCPU_REGS_CR3]))
 			goto errout;
 		if (vmread(VMCS_GUEST_IA32_CR4, &crs[VCPU_REGS_CR4]))
+			goto errout;
+		if (vmread(VMCS_GUEST_PDPTE0, &crs[VCPU_REGS_PDPTE0]))
+			goto errout;
+		if (vmread(VMCS_GUEST_PDPTE1, &crs[VCPU_REGS_PDPTE1]))
+			goto errout;
+		if (vmread(VMCS_GUEST_PDPTE2, &crs[VCPU_REGS_PDPTE2]))
+			goto errout;
+		if (vmread(VMCS_GUEST_PDPTE3, &crs[VCPU_REGS_PDPTE3]))
 			goto errout;
 	}
 
@@ -1509,7 +1517,6 @@ vcpu_writeregs_vmx(struct vcpu *vcpu, uint64_t regmask, int loadvmcs,
 			goto errout;
 	}
 	if (regmask & VM_RWREGS_CRS) {
-		vcpu->vc_gueststate.vg_xcr0 = crs[VCPU_REGS_XCR0];
 		if (vmwrite(VMCS_GUEST_IA32_CR0, crs[VCPU_REGS_CR0]))
 			goto errout;
 		if (vmwrite(VMCS_GUEST_IA32_CR3, crs[VCPU_REGS_CR3]))
@@ -2227,12 +2234,9 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 	 * any value for CR0_PG and CR0_PE in vrs->vrs_crs[VCPU_REGS_CR0] if
 	 * the CPU has the unrestricted guest capability.
 	 */
-	cr0 = vrs->vrs_crs[VCPU_REGS_CR0];
-
 	if (ug) {
 		want1 &= ~(CR0_PG | CR0_PE);
 		want0 &= ~(CR0_PG | CR0_PE);
-		cr0 &= ~(CR0_PG | CR0_PE);
 	}
 
 	/*
@@ -2250,11 +2254,6 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 		ret = EINVAL;
 		goto exit;
 	}
-
-	if (ug)
-		cr3 = 0;
-	else
-		cr3 = vrs->vrs_crs[VCPU_REGS_CR3];
 
 	/*
 	 * Determine which bits in CR4 have to be set to a fixed
@@ -2464,9 +2463,6 @@ vcpu_reset_regs_vmx(struct vcpu *vcpu, struct vcpu_reg_state *vrs)
 
 	/* XXX CR0 shadow */
 	/* XXX CR4 shadow */
-
-	/* xcr0 power on default sets bit 0 (x87 state) */
-	vcpu->vc_gueststate.vg_xcr0 = XCR0_X87 & xsave_mask;
 
 	/* Flush the VMCS */
 	if (vmclear(&vcpu->vc_control_pa)) {

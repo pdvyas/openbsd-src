@@ -340,7 +340,13 @@ struct vcpu_segment_info {
 #define VCPU_REGS_NSREGS	(VCPU_REGS_TR + 1)
 
 #define VCPU_REGS_EFER		0
-#define VCPU_REGS_NMSRS		(VCPU_REGS_EFER + 1)
+#define VCPU_REGS_STAR   	1
+#define VCPU_REGS_LSTAR  	2
+#define VCPU_REGS_CSTAR  	3
+#define VCPU_REGS_SFMASK 	4
+#define VCPU_REGS_KGSBASE	5
+#define VCPU_REGS_MISC_ENABLE	6
+#define VCPU_REGS_NMSRS	(VCPU_REGS_MISC_ENABLE + 1)
 
 struct vcpu_reg_state {
 	uint32_t			vrs_gprs[VCPU_REGS_NGPRS];
