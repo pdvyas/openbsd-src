@@ -3847,11 +3847,7 @@ vcpu_run_vmx(struct vcpu *vcpu, struct vm_run_params *vrp)
 			 * the exit handler determines help from vmd is needed.
 			 */
 			vcpu->vc_gueststate.vg_exit_reason = exit_reason;
-			if (exit_reason == 1)
-				printf("BEFORE: %u\n", exit_reason);
 			ret = vmx_handle_exit(vcpu);
-			if (exit_reason == 1)
-				printf("AFTER: %u\n", exit_reason);
 
 			/*
 			 * When the guest exited due to an external interrupt,
@@ -3993,25 +3989,17 @@ vmx_handle_intr(struct vcpu *vcpu)
 	struct gate_descriptor *idte;
 	vaddr_t handler;
 
-	printf("READING EII\n");
-
 	if (vmread(VMCS_EXIT_INTERRUPTION_INFO, &eii)) {
 		printf("%s: can't obtain intr info\n", __func__);
 		return;
 	}
 
-	printf("READ EII\n");
-
 	vec = eii & 0xFF;
 
 	/* XXX check "error valid" code in eii, abort if 0 */
-	printf("GETTING IDTE\n");
 	idte=&idt[vec];
-	printf("READ HANDLER\n");
 	handler = idte->gd_looffset + ((uint64_t)idte->gd_hioffset << 16);
-	printf("DISPATCHING \n");
 	vmm_dispatch_intr(handler);
-	printf("HANDLER RETURNED \n");
 }
 
 /*
@@ -4123,9 +4111,7 @@ vmx_handle_exit(struct vcpu *vcpu)
 		update_rip = 1;
 		break;
 	case VMX_EXIT_EXTINT:
-		printf("HERE IN EXTINT\n");
 		vmx_handle_intr(vcpu);
-		printf("DONE IN EXTINT\n");
 		update_rip = 0;
 		break;
 	case VMX_EXIT_CR_ACCESS:
@@ -5020,6 +5006,7 @@ vmm_handle_cpuid(struct vcpu *vcpu)
 {
 	uint32_t insn_length;
 	uint32_t *eax, *ebx, *ecx, *edx, cpuid_limit;
+	uint32_t new_eax, new_ebx, new_ecx, new_edx;
 	struct vmx_msr_store *msr_store;
 
 	if (vmm_softc->mode == VMM_MODE_VMX ||
@@ -5073,7 +5060,6 @@ vmm_handle_cpuid(struct vcpu *vcpu)
 	 */
 	if ((vmm_softc->mode == VMM_MODE_VMX || vmm_softc->mode == VMM_MODE_EPT)
 	    && cpuid_limit && (*eax > 0x02 && *eax < 0x80000000)) {
-		printf("HERE: 6\n");
 		*eax = 0;
 		*ebx = 0;
 		*ecx = 0;
@@ -5116,11 +5102,17 @@ vmm_handle_cpuid(struct vcpu *vcpu)
 		break;
 	case 0x04:
 		if (*ecx == 0) {
-			CPUID_LEAF(*eax, 0, eax, ebx, ecx, edx);
-			*eax = *eax & VMM_CPUID4_CACHE_TOPOLOGY_MASK;
+			CPUID_LEAF(*eax, 0, new_eax, new_ebx, new_ecx, new_edx);
+			*eax = new_eax & VMM_CPUID4_CACHE_TOPOLOGY_MASK;
+			*ebx = new_ebx;
+			*ecx = new_ecx;
+			*edx = new_edx;
 		} else {
-			CPUID_LEAF(*eax, *ecx, eax, ebx, ecx, edx);
-			*eax = *eax & VMM_CPUID4_CACHE_TOPOLOGY_MASK;
+			CPUID_LEAF(*eax, *ecx, new_eax, new_ebx, new_ecx, new_edx);
+			*eax = new_eax & VMM_CPUID4_CACHE_TOPOLOGY_MASK;
+			*ebx = new_ebx;
+			*ecx = new_ecx;
+			*edx = new_edx;
 		}
 		break;
 	case 0x05:	/* MONITOR/MWAIT (not supported) */
