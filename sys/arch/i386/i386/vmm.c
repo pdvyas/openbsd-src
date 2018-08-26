@@ -198,9 +198,6 @@ void vmm_decode_perf_status_value(uint64_t);
 void vmm_decode_perf_ctl_value(uint64_t);
 void vmm_decode_mtrrdeftype_value(uint64_t);
 void vmm_decode_efer_value(uint64_t);
-void vmm_decode_eflags(uint32_t);
-void vmm_decode_misc_enable_value(uint64_t);
-const char *vmm_decode_cpu_mode(struct vcpu *);
 
 extern int mtrr2mrt(int);
 
