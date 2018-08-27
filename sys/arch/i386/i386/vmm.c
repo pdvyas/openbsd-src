@@ -5027,31 +5027,6 @@ vmm_handle_cpuid(struct vcpu *vcpu)
 	edx = &vcpu->vc_gueststate.vg_edx;
 
 	/*
-	 * "If a value entered for CPUID.EAX is higher than the maximum input
-	 *  value for basic or extended function for that processor then the
-	 *  data for the highest basic information leaf is returned."
-	 *
-	 * This means if rax is between cpuid_level and 0x40000000 (the start
-	 * of the hypervisor info leaves), clamp to cpuid_level. Also, if
-	 * rax is greater than the extended function info, clamp also to
-	 * cpuid_level.
-	 *
-	 * Note that %rax may be overwritten here - that's ok since we are
-	 * going to reassign it a new value (based on the input parameter)
-	 * later anyway.
-	 */
-
-	/* XXX(pd): Fix this */
-	/* if ((*eax > cpuid_level && *eax < 0x40000000) || */
-	/*     (*eax > curcpu()->ci_pnfeatset)) { */
-	/* 	DPRINTF("%s: invalid cpuid input leaf 0x%x, guest rip=" */
-	/* 	    "0x%x - resetting to 0x%x\n", __func__, *eax, */
-	/* 	    vcpu->vc_gueststate.vg_eip - insn_length, */
-	/* 	    cpuid_level); */
-	/* 	*eax = cpuid_level; */
-	/* } */
-
-	/*
 	 * "CPUID leaves above 02H and below 80000000H are only visible when
 	 * IA32_MISC_ENABLE MSR has bit 22 set to its default value 0"
 	 */
