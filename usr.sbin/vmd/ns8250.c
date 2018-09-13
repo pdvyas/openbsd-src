@@ -646,6 +646,7 @@ ns8250_stop()
 {
 	if(event_del(&com1_dev.event))
 		log_warn("could not delete ns8250 event handler");
+	evtimer_del(&com1_dev.rate);
 }
 
 void
