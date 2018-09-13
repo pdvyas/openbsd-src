@@ -265,6 +265,8 @@ void virtio_shutdown(struct vmd_vm *);
 int virtio_dump(int);
 int virtio_restore(int, struct vmd_vm *, int,
     int[][VM_MAX_BASE_PER_DISK], int *);
+void virtio_stop(struct vm_create_params *vcp);
+void virtio_start(struct vm_create_params *vcp);
 uint32_t vring_size(uint32_t);
 
 int virtio_rnd_io(int, uint16_t, uint32_t *, uint8_t *, void *, uint8_t);
