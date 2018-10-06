@@ -496,4 +496,27 @@ struct vm_page_md {
 	(pg)->mdpage.pv_list = NULL;	\
 } while (0)
 
+/*
+ * Mask to get rid of the sign-extended part of addresses.
+ */
+#define VA_SIGN_MASK		0xffff000000000000
+#define VA_SIGN_NEG(va)		((va) | VA_SIGN_MASK)
+/*
+ * XXXfvdl this one's not right.
+ */
+#define VA_SIGN_POS(va)		((va) & ~VA_SIGN_MASK)
+#define ptp_va2o(va, lvl)        (pl_i(va, (lvl)+1) * PAGE_SIZE)
+/*
+ * pl*_i: generate index into pde/pte arrays in virtual space
+ */
+#define pl1_i(VA)	(((VA_SIGN_POS(VA)) & L1_FRAME) >> L1_SHIFT)
+#define pl2_i(VA)	(((VA_SIGN_POS(VA)) & L2_FRAME) >> L2_SHIFT)
+#define pl3_i(VA)	(((VA_SIGN_POS(VA)) & L3_FRAME) >> L3_SHIFT)
+#define pl4_i(VA)	(((VA_SIGN_POS(VA)) & L4_FRAME) >> L4_SHIFT)
+#define pl_i(va, lvl) \
+        (((VA_SIGN_POS(va)) & ptp_masks[(lvl)-1]) >> ptp_shifts[(lvl)-1])
+
+#define PTP_MASK_INITIALIZER	{ L1_FRAME, L2_FRAME, L3_FRAME, L4_FRAME }
+#define PTP_SHIFT_INITIALIZER	{ L1_SHIFT, L2_SHIFT, L3_SHIFT, L4_SHIFT }
 #endif	/* _MACHINE_PMAP_H_ */
+

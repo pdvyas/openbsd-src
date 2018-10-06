@@ -486,6 +486,9 @@ void		 pmap_remove_ptes_pae(struct pmap *, struct vm_page *,
 		     vaddr_t, vaddr_t, vaddr_t, int, struct pv_entry **);
 void		 pmap_sync_flags_pte_pae(struct vm_page *, pt_entry_t);
 
+const vaddr_t ptp_masks[] = PTP_MASK_INITIALIZER;
+const int ptp_shifts[] = PTP_SHIFT_INITIALIZER;
+
 static __inline u_int
 pmap_pte2flags(pt_entry_t pte)
 {
@@ -1723,223 +1726,169 @@ pmap_map_ptes_pae_ept(struct pmap *pmap)
 
 
 int
-pmap_enter_pae_ept(struct pmap *pmap, vaddr_t va, paddr_t pa, vm_prot_t prot,
+pmap_enter_pae_ept(struct pmap *pmap, vaddr_t gpa, paddr_t hpa, vm_prot_t prot,
     int flags)
 {
-	pt_entry_t *ptes, opte, npte;
-	struct vm_page *ptp;
-	struct pv_entry *pve, *opve = NULL;
-	boolean_t wired = (flags & PMAP_WIRED) != 0;
-	boolean_t nocache = (pa & PMAP_NOCACHE) != 0;
-	boolean_t wc = (pa & PMAP_WC) != 0;
-	struct vm_page *pg = NULL;
-	int error, wired_count, resident_count, ptp_count;
+	uint64_t l4idx, l3idx, l2idx, l1idx;
+	pd_entry_t *pd, npte;
+	struct vm_page *ptp, *pptp, *pg;
+	paddr_t npa;
+	struct uvm_object *obj;
 
-	KASSERT(!(wc && nocache));
-	pa &= PMAP_PA_MASK;	/* nuke flags from pa */
+	if (gpa > MAXDSIZ)
+		return ENOMEM;
 
-#ifdef DIAGNOSTIC
-	/* sanity check: totally out of range? */
-	if (va >= VM_MAX_KERNEL_ADDRESS)
-		panic("pmap_enter_pae: too big");
+	l4idx = (gpa & L4_MASK) >> L4_SHIFT; /* PML4E idx */
+	l3idx = (gpa & L3_MASK) >> L3_SHIFT; /* PDPTE idx */
+	l2idx = (gpa & L2_MASK) >> L2_SHIFT; /* PDE idx */
+	l1idx = (gpa & L1_MASK) >> L1_SHIFT; /* PTE idx */
 
-	if (va == (vaddr_t) PDP_BASE || va == (vaddr_t) APDP_BASE)
-		panic("pmap_enter_pae: trying to map over PDP/APDP!");
+	/* Start at PML4 / top level */
+	pd = (pd_entry_t *)pmap->pm_pdir;
 
-	/* sanity check: kernel PTPs should already have been pre-allocated */
-	if (va >= VM_MIN_KERNEL_ADDRESS &&
-	    !pmap_valid_entry(PDE(pmap, pdei(va))))
-		panic("pmap_enter_pae: missing kernel PTP!");
-#endif
+	if (!pd)
+		return ENOMEM;
 
-	if (pmap_initialized)
-		pve = pool_get(&pmap_pv_pool, PR_NOWAIT);
-	else
-		pve = NULL;
-	wired_count = resident_count = ptp_count = 0;
+	/* npa = physaddr of PDPT */
+	npa = pd[l4idx] & PMAP_PA_MASK;
 
-	/*
-	 * map in ptes and get a pointer to our PTP (unless we are the kernel)
-	 */
+	/* Valid PML4e for the 512GB region containing gpa? */
+	if (!npa) {
+		/* No valid PML4e - allocate PDPT page and set PML4e */
+		obj = &pmap->pm_obj;	/* PML4 UVM object */
+		ptp = uvm_pagealloc(obj, ptp_va2o(gpa, 3), NULL,
+		    UVM_PGA_USERESERVE|UVM_PGA_ZERO);
 
-	ptes = pmap_map_ptes_pae_ept(pmap);		/* locks pmap */
-	/* utes = pmap_map_ptes_pae(pmap);		#<{(| locks pmap |)}># */
-	if (pmap == pmap_kernel()) {
-		ptp = NULL;
+		if (ptp == NULL)
+			return ENOMEM;
+
+		/*
+		 * New PDPT page - we are setting the first entry, so set
+		 * the wired count to 1
+		 */
+		ptp->wire_count = 1;
+
+		/* Calculate phys address of this new PDPT page */
+		npa = VM_PAGE_TO_PHYS(ptp);
+
+		/*
+		 * Higher levels get full perms; specific permissions are
+		 * entered at the lowest level.
+		 */
+		pd[l4idx] = (npa | EPT_R | EPT_W | EPT_X);
+
+		pmap->pm_stats.resident_count++;
+
+		pptp = ptp;
 	} else {
-		ptp = pmap_get_ptp_pae(pmap, pdei(va));
-		if (ptp == NULL) {
-			if (flags & PMAP_CANFAIL) {
-				error = ENOMEM;
-				pmap_unmap_ptes_pae(pmap);
-				goto out;
-			}
-			panic("pmap_enter_pae: get ptp failed");
-		}
+		/* Already allocated PML4e */
+		pptp = PHYS_TO_VM_PAGE(npa);
 	}
-	/*
-	 * not allowed to sleep after here!
-	 */
-	opte = ptes[atop(va)];			/* old PTE */
 
-	/*
-	 * is there currently a valid mapping at our VA?
-	 */
+	pd = (pd_entry_t *)PMAP_DIRECT_MAP(npa);
+	if (!pd)
+		panic("%s: can't locate PDPT @ pa=0x%llx\n", __func__,
+		    (uint64_t)npa);
 
-	if (pmap_valid_entry(opte)) {
+	/* npa = physaddr of PD page */
+	npa = pd[l3idx] & PMAP_PA_MASK;
+
+	/* Valid PDPTe for the 1GB region containing gpa? */
+	if (!npa) {
+		/* No valid PDPTe - allocate PD page and set PDPTe */
+		obj = &pmap->pm_obj;	/* PDPT UVM object */
+		ptp = uvm_pagealloc(obj, ptp_va2o(gpa, 2), NULL,
+		    UVM_PGA_USERESERVE|UVM_PGA_ZERO);
+
+		if (ptp == NULL)
+			return ENOMEM;
 
 		/*
-		 * first, calculate pm_stats updates.  resident count will not
-		 * change since we are replacing/changing a valid
-		 * mapping.  wired count might change...
+		 * New PD page - we are setting the first entry, so set
+		 * the wired count to 1
 		 */
+		ptp->wire_count = 1;
+		pptp->wire_count++;
 
-		if (wired && (opte & PG_W) == 0)
-			wired_count++;
-		else if (!wired && (opte & PG_W) != 0)
-			wired_count--;
+		npa = VM_PAGE_TO_PHYS(ptp);
 
 		/*
-		 * is the currently mapped PA the same as the one we
-		 * want to map?
+		 * Higher levels get full perms; specific permissions are
+		 * entered at the lowest level.
 		 */
+		pd[l3idx] = (npa | EPT_R | EPT_W | EPT_X);
 
-		if ((opte & PG_FRAME) == pa) {
+		pmap->pm_stats.resident_count++;
 
-			/* if this is on the PVLIST, sync R/M bit */
-			if (opte & PG_PVLIST) {
-				pg = PHYS_TO_VM_PAGE(pa);
-#ifdef DIAGNOSTIC
-				if (pg == NULL)
-					panic("pmap_enter_pae: same pa "
-					     "PG_PVLIST mapping with "
-					     "unmanaged page "
-					     "pa = 0x%lx (0x%lx)", pa,
-					     atop(pa));
-#endif
-				pmap_sync_flags_pte_pae(pg, opte);
-			}
-			goto enter_now;
-		}
+		pptp = ptp;
+	} else {
+		/* Already allocated PDPTe */
+		pptp = PHYS_TO_VM_PAGE(npa);
+	}
+
+	pd = (pd_entry_t *)PMAP_DIRECT_MAP(npa);
+	if (!pd)
+		panic("%s: can't locate PD page @ pa=0x%llx\n", __func__,
+		    (uint64_t)npa);
+
+	/* npa = physaddr of PT page */
+	npa = pd[l2idx] & PMAP_PA_MASK;
+
+	/* Valid PDE for the 2MB region containing gpa? */
+	if (!npa) {
+		/* No valid PDE - allocate PT page and set PDE */
+		obj = &pmap->pm_obj;	/* PDE UVM object */
+		ptp = uvm_pagealloc(obj, ptp_va2o(gpa, 1), NULL,
+		    UVM_PGA_USERESERVE|UVM_PGA_ZERO);
+
+		if (ptp == NULL)
+			return ENOMEM;
+
+		pptp->wire_count++;
+
+		npa = VM_PAGE_TO_PHYS(ptp);
 
 		/*
-		 * changing PAs: we must remove the old one first
+		 * Higher level get full perms; specific permissions are
+		 * entered at the lowest level.
 		 */
+		pd[l2idx] = (npa | EPT_R | EPT_W | EPT_X);
 
-		/*
-		 * if current mapping is on a pvlist,
-		 * remove it (sync R/M bits)
-		 */
+		pmap->pm_stats.resident_count++;
 
-		if (opte & PG_PVLIST) {
-			pg = PHYS_TO_VM_PAGE(opte & PG_FRAME);
-#ifdef DIAGNOSTIC
-			if (pg == NULL)
-				panic("pmap_enter_pae: PG_PVLIST mapping with "
-				      "unmanaged page "
-				      "pa = 0x%lx (0x%lx)", pa, atop(pa));
-#endif
-			pmap_sync_flags_pte_pae(pg, opte);
-			opve = pmap_remove_pv(pg, pmap, va);
-			pg = NULL; /* This is not the page we are looking for */
-		}
-	} else {	/* opte not valid */
-		resident_count++;
-		if (wired)
-			wired_count++;
-		if (ptp)
-			ptp_count++;	/* count # of valid entries */
+	} else {
+		/* Find final ptp */
+		ptp = PHYS_TO_VM_PAGE(npa);
+		if (ptp == NULL)
+			panic("%s: ptp page vanished?", __func__);
 	}
 
-	/*
-	 * pve is either NULL or points to a now-free pv_entry structure
-	 * (the latter case is if we called pmap_remove_pv above).
-	 *
-	 * if this entry is to be on a pvlist, enter it now.
-	 */
+	pd = (pd_entry_t *)PMAP_DIRECT_MAP(npa);
+	if (!pd)
+		panic("%s: can't locate PT page @ pa=0x%llx\n", __func__,
+		    (uint64_t)npa);
 
-	if (pmap_initialized && pg == NULL)
-		pg = PHYS_TO_VM_PAGE(pa);
+	npte = hpa | EPT_WB;
+	if (prot & PROT_READ)
+		npte |= EPT_R;
+	if (prot & PROT_WRITE)
+		npte |= EPT_W;
+	if (prot & PROT_EXEC)
+		npte |= EPT_X;
 
-	if (pg != NULL) {
-		if (pve == NULL) {
-			pve = opve;
-			opve = NULL;
-		}
-		if (pve == NULL) {
-			if (flags & PMAP_CANFAIL) {
-				pmap_unmap_ptes_pae(pmap);
-				error = ENOMEM;
-				goto out;
-			}
-			panic("pmap_enter_pae: no pv entries available");
-		}
-		/* lock pg when adding */
-		pmap_enter_pv(pg, pve, pmap, va, ptp);
-		pve = NULL;
+	pg = PHYS_TO_VM_PAGE(hpa);
+
+	if (pd[l1idx] == 0) {
+		ptp->wire_count++;
+		pmap->pm_stats.resident_count++;
+	} else {
+		/* XXX flush ept */
 	}
 
-enter_now:
-	/*
-	 * at this point pg is !NULL if we want the PG_PVLIST bit set
-	 */
+	pd[l1idx] = npte;
 
-	npte = pa | protection_codes[prot] | PG_V;
-	if (!(prot & PROT_EXEC))
-		npte |= PG_NX;
-	pmap_exec_account(pmap, va, opte, npte);
-	if (wired)
-		npte |= PG_W;
-	if (nocache)
-		npte |= PG_N;
-	if (va < VM_MAXUSER_ADDRESS)
-		npte |= PG_u;
-	else if (va < VM_MAX_ADDRESS)
-		npte |= PG_RW;	/* XXXCDC: no longer needed? */
-	if (pmap == pmap_kernel())
-		npte |= pmap_pg_g;
-	if (flags & PROT_READ)
-		npte |= PG_U;
-	if (flags & PROT_WRITE)
-		npte |= PG_M;
-	if (pg) {
-		npte |= PG_PVLIST;
-		if (pg->pg_flags & PG_PMAP_WC) {
-			KASSERT(nocache == 0);
-			wc = TRUE;
-		}
-		pmap_sync_flags_pte_pae(pg, npte);
-	}
-	if (wc)
-		npte |= pmap_pg_wc;
-
-	opte = i386_atomic_testset_uq(&ptes[atop(va)], npte);
-	if (ptp)
-		ptp->wire_count += ptp_count;
-	pmap->pm_stats.resident_count += resident_count;
-	pmap->pm_stats.wired_count += wired_count;
-
-	if (pmap_valid_entry(opte)) {
-		if (nocache && (opte & PG_N) == 0)
-			wbinvd(); /* XXX clflush before we enter? */
-		pmap_tlb_shootpage(pmap, va);
-	}
-
-	pmap_unmap_ptes_pae(pmap);
-	pmap_tlb_shootwait();
-
-	error = 0;
-
-out:
-	if (pve)
-		pool_put(&pmap_pv_pool, pve);
-	if (opve)
-		pool_put(&pmap_pv_pool, opve);
-
-	return error;
+	return 0;
 }
-
-
 /*
  * defined as macro in pmap.h
  */
@@ -1963,9 +1912,9 @@ pmap_enter_pae(struct pmap *pmap, vaddr_t va, paddr_t pa, vm_prot_t prot,
 	struct vm_page *pg = NULL;
 	int error, wired_count, resident_count, ptp_count;
 
-	if (pmap->pm_type == PMAP_TYPE_EPT) {
-		return pmap_enter_pae_ept(pmap, va, pa, prot, flags);
-	}
+	/* if (pmap->pm_type == PMAP_TYPE_EPT) { */
+	/* 	return pmap_enter_pae_ept(pmap, va, pa, prot, flags); */
+	/* } */
 
 	KASSERT(!(wc && nocache));
 	pa &= PMAP_PA_MASK;	/* nuke flags from pa */
@@ -2458,61 +2407,21 @@ pmap_flush_page_pae(paddr_t pa)
 int
 pmap_convert(struct pmap *pmap, int mode)
 {
-	int ret;
 	pt_entry_t *pte;
-	paddr_t pml4_pa, pdpt_pa;
 
 	pmap->pm_type = mode;
 
-	ret = 0;
 	if (mode == PMAP_TYPE_EPT) {
-		pmap->pm_npt_pml4 = (vaddr_t)km_alloc(PAGE_SIZE, &kv_any,
-		    &kp_zero, &kd_nowait);
-		if (!pmap->pm_npt_pml4) {
-			ret = ENOMEM;
-			goto error;
-		}
+		/* Clear PML4 */
+		pte = (pt_entry_t *)pmap->pm_pdir;
+		memset(pte, 0, PAGE_SIZE);
 
-		pmap->pm_npt_pdpt = (vaddr_t)km_alloc(PAGE_SIZE, &kv_any,
-		    &kp_zero, &kd_nowait);
-		if (!pmap->pm_npt_pdpt) {
-			ret = ENOMEM;
-			goto error;
-		}
-
-		if (!pmap_extract(pmap_kernel(), pmap->pm_npt_pml4,
-		    &pml4_pa)) {
-			ret = ENOMEM;
-			goto error;
-		}
-		pmap->pm_npt_pa = pml4_pa;
-
-		if (!pmap_extract(pmap_kernel(), pmap->pm_npt_pdpt,
-		    &pdpt_pa)) {
-			ret = ENOMEM;
-			goto error;
-		}
-
-		pte = (pt_entry_t *)pmap->pm_npt_pml4;
-		pte[0] = (pdpt_pa & PG_FRAME) | EPT_R | EPT_W | EPT_X;
-		pte = (pt_entry_t *)pmap->pm_npt_pdpt;
-		pte[0] = (pmap->pm_pdidx[0] & PG_FRAME) |
-		    EPT_R | EPT_W | EPT_X;
-		pte[1] = (pmap->pm_pdidx[1] & PG_FRAME) |
-		    EPT_R | EPT_W | EPT_X;
-		pte[2] = (pmap->pm_pdidx[2] & PG_FRAME) |
-		    EPT_R | EPT_W | EPT_X;
-		pte[3] = (pmap->pm_pdidx[3] & PG_FRAME) |
-		    EPT_R | EPT_W | EPT_X;
+		/* #<{(| Give back the meltdown pdir |)}># */
+		/* if (pmap->pm_pdir_intel) { */
+		/* 	pool_put(&pmap_pdp_pool, pmap->pm_pdir_intel); */
+		/* 	pmap->pm_pdir_intel = 0; */
+		/* } */
 	}
 
-	return (ret);
-
-error:
-	if (pmap->pm_npt_pml4)
-		km_free((void *)pmap->pm_npt_pml4, PAGE_SIZE, &kv_any, &kp_zero);
-	if (pmap->pm_npt_pdpt)
-		km_free((void *)pmap->pm_npt_pdpt, PAGE_SIZE, &kv_any, &kp_zero);
-
-	return (ret);
+	return (0);
 }

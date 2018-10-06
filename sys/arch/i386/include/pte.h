@@ -96,4 +96,20 @@
 #define PGEX_U		0x04	/* exception while in user mode (upl) */
 #define PGEX_I		0x10	/* instruction fetch blocked by NX */
 
+#define L1_SHIFT	12
+#define	L2_SHIFT	21
+#define	L3_SHIFT	30
+#define	L4_SHIFT	39
+
+#define L4_MASK		0x0000ff8000000000UL
+#define L3_MASK		0x0000007fc0000000UL
+#define L2_MASK		0x000000003fe00000UL
+#define L1_MASK		0x00000000001ff000UL
+
+#define L4_FRAME	L4_MASK
+#define L3_FRAME	(L4_FRAME|L3_MASK)
+#define L2_FRAME	(L3_FRAME|L2_MASK)
+#define L1_FRAME	(L2_FRAME|L1_MASK)
+
+
 #endif /* _MACHINE_PTE_H_ */
