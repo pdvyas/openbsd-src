@@ -534,6 +534,8 @@ pmap_map_ptes_pae(struct pmap *pmap)
 		panic("pmap_map_ptes_pae: APTE valid");
 #endif
 	if (!pmap_valid_entry(opde) || (opde & PG_FRAME) != pmap->pm_pdidx[0]) {
+		if (pmap->pm_type == PMAP_TYPE_EPT)
+			printf("IN IF COND NORMAL\n");
 		APDP_PDE[0] = pmap->pm_pdidx[0] | PG_RW | PG_V | PG_U | PG_M;
 		APDP_PDE[1] = pmap->pm_pdidx[1] | PG_RW | PG_V | PG_U | PG_M;
 		APDP_PDE[2] = pmap->pm_pdidx[2] | PG_RW | PG_V | PG_U | PG_M;
@@ -1680,6 +1682,264 @@ pmap_unwire_pae(struct pmap *pmap, vaddr_t va)
  * void pmap_copy(dst_pmap, src_pmap, dst_addr, len, src_addr)
  */
 
+/// FORKS
+
+pt_entry_t *
+pmap_map_ptes_pae_ept(struct pmap *pmap)
+{
+	pd_entry_t opde;
+
+	/* the kernel's pmap is always accessible */
+	if (pmap == pmap_kernel()) {
+		return(PTE_BASE);
+	}
+
+	mtx_enter(&pmap->pm_mtx);
+
+	/* if curpmap then we are always mapped */
+	if (pmap_is_curpmap(pmap)) {
+		return(PTE_BASE);
+	}
+
+	mtx_enter(&curcpu()->ci_curpmap->pm_apte_mtx);
+
+	/* need to load a new alternate pt space into curpmap? */
+	opde = *APDP_PDE;
+#if defined(MULTIPROCESSOR) && defined(DIAGNOSTIC)
+	if (pmap_valid_entry(opde))
+		panic("pmap_map_ptes_pae: APTE valid");
+#endif
+	if (!pmap_valid_entry(opde) || (opde & PG_FRAME) != pmap->pm_pdidx[0]) {
+		printf("IN IF COND EPT\n");
+		APDP_PDE[0] = pmap->pm_pdidx[0] | EPT_R | EPT_W | EPT_X;
+		APDP_PDE[1] = pmap->pm_pdidx[1] | EPT_R | EPT_W | EPT_X;
+		APDP_PDE[2] = pmap->pm_pdidx[2] | EPT_R | EPT_W | EPT_X;
+		APDP_PDE[3] = pmap->pm_pdidx[3] | EPT_R | EPT_W | EPT_X;
+		if (pmap_valid_entry(opde))
+			pmap_apte_flush();
+	}
+	return(APTE_BASE);
+}
+
+
+int
+pmap_enter_pae_ept(struct pmap *pmap, vaddr_t va, paddr_t pa, vm_prot_t prot,
+    int flags)
+{
+	pt_entry_t *ptes, opte, npte;
+	struct vm_page *ptp;
+	struct pv_entry *pve, *opve = NULL;
+	boolean_t wired = (flags & PMAP_WIRED) != 0;
+	boolean_t nocache = (pa & PMAP_NOCACHE) != 0;
+	boolean_t wc = (pa & PMAP_WC) != 0;
+	struct vm_page *pg = NULL;
+	int error, wired_count, resident_count, ptp_count;
+
+	KASSERT(!(wc && nocache));
+	pa &= PMAP_PA_MASK;	/* nuke flags from pa */
+
+#ifdef DIAGNOSTIC
+	/* sanity check: totally out of range? */
+	if (va >= VM_MAX_KERNEL_ADDRESS)
+		panic("pmap_enter_pae: too big");
+
+	if (va == (vaddr_t) PDP_BASE || va == (vaddr_t) APDP_BASE)
+		panic("pmap_enter_pae: trying to map over PDP/APDP!");
+
+	/* sanity check: kernel PTPs should already have been pre-allocated */
+	if (va >= VM_MIN_KERNEL_ADDRESS &&
+	    !pmap_valid_entry(PDE(pmap, pdei(va))))
+		panic("pmap_enter_pae: missing kernel PTP!");
+#endif
+
+	if (pmap_initialized)
+		pve = pool_get(&pmap_pv_pool, PR_NOWAIT);
+	else
+		pve = NULL;
+	wired_count = resident_count = ptp_count = 0;
+
+	/*
+	 * map in ptes and get a pointer to our PTP (unless we are the kernel)
+	 */
+
+	ptes = pmap_map_ptes_pae_ept(pmap);		/* locks pmap */
+	/* utes = pmap_map_ptes_pae(pmap);		#<{(| locks pmap |)}># */
+	if (pmap == pmap_kernel()) {
+		ptp = NULL;
+	} else {
+		ptp = pmap_get_ptp_pae(pmap, pdei(va));
+		if (ptp == NULL) {
+			if (flags & PMAP_CANFAIL) {
+				error = ENOMEM;
+				pmap_unmap_ptes_pae(pmap);
+				goto out;
+			}
+			panic("pmap_enter_pae: get ptp failed");
+		}
+	}
+	/*
+	 * not allowed to sleep after here!
+	 */
+	opte = ptes[atop(va)];			/* old PTE */
+
+	/*
+	 * is there currently a valid mapping at our VA?
+	 */
+
+	if (pmap_valid_entry(opte)) {
+
+		/*
+		 * first, calculate pm_stats updates.  resident count will not
+		 * change since we are replacing/changing a valid
+		 * mapping.  wired count might change...
+		 */
+
+		if (wired && (opte & PG_W) == 0)
+			wired_count++;
+		else if (!wired && (opte & PG_W) != 0)
+			wired_count--;
+
+		/*
+		 * is the currently mapped PA the same as the one we
+		 * want to map?
+		 */
+
+		if ((opte & PG_FRAME) == pa) {
+
+			/* if this is on the PVLIST, sync R/M bit */
+			if (opte & PG_PVLIST) {
+				pg = PHYS_TO_VM_PAGE(pa);
+#ifdef DIAGNOSTIC
+				if (pg == NULL)
+					panic("pmap_enter_pae: same pa "
+					     "PG_PVLIST mapping with "
+					     "unmanaged page "
+					     "pa = 0x%lx (0x%lx)", pa,
+					     atop(pa));
+#endif
+				pmap_sync_flags_pte_pae(pg, opte);
+			}
+			goto enter_now;
+		}
+
+		/*
+		 * changing PAs: we must remove the old one first
+		 */
+
+		/*
+		 * if current mapping is on a pvlist,
+		 * remove it (sync R/M bits)
+		 */
+
+		if (opte & PG_PVLIST) {
+			pg = PHYS_TO_VM_PAGE(opte & PG_FRAME);
+#ifdef DIAGNOSTIC
+			if (pg == NULL)
+				panic("pmap_enter_pae: PG_PVLIST mapping with "
+				      "unmanaged page "
+				      "pa = 0x%lx (0x%lx)", pa, atop(pa));
+#endif
+			pmap_sync_flags_pte_pae(pg, opte);
+			opve = pmap_remove_pv(pg, pmap, va);
+			pg = NULL; /* This is not the page we are looking for */
+		}
+	} else {	/* opte not valid */
+		resident_count++;
+		if (wired)
+			wired_count++;
+		if (ptp)
+			ptp_count++;	/* count # of valid entries */
+	}
+
+	/*
+	 * pve is either NULL or points to a now-free pv_entry structure
+	 * (the latter case is if we called pmap_remove_pv above).
+	 *
+	 * if this entry is to be on a pvlist, enter it now.
+	 */
+
+	if (pmap_initialized && pg == NULL)
+		pg = PHYS_TO_VM_PAGE(pa);
+
+	if (pg != NULL) {
+		if (pve == NULL) {
+			pve = opve;
+			opve = NULL;
+		}
+		if (pve == NULL) {
+			if (flags & PMAP_CANFAIL) {
+				pmap_unmap_ptes_pae(pmap);
+				error = ENOMEM;
+				goto out;
+			}
+			panic("pmap_enter_pae: no pv entries available");
+		}
+		/* lock pg when adding */
+		pmap_enter_pv(pg, pve, pmap, va, ptp);
+		pve = NULL;
+	}
+
+enter_now:
+	/*
+	 * at this point pg is !NULL if we want the PG_PVLIST bit set
+	 */
+
+	npte = pa | protection_codes[prot] | PG_V;
+	if (!(prot & PROT_EXEC))
+		npte |= PG_NX;
+	pmap_exec_account(pmap, va, opte, npte);
+	if (wired)
+		npte |= PG_W;
+	if (nocache)
+		npte |= PG_N;
+	if (va < VM_MAXUSER_ADDRESS)
+		npte |= PG_u;
+	else if (va < VM_MAX_ADDRESS)
+		npte |= PG_RW;	/* XXXCDC: no longer needed? */
+	if (pmap == pmap_kernel())
+		npte |= pmap_pg_g;
+	if (flags & PROT_READ)
+		npte |= PG_U;
+	if (flags & PROT_WRITE)
+		npte |= PG_M;
+	if (pg) {
+		npte |= PG_PVLIST;
+		if (pg->pg_flags & PG_PMAP_WC) {
+			KASSERT(nocache == 0);
+			wc = TRUE;
+		}
+		pmap_sync_flags_pte_pae(pg, npte);
+	}
+	if (wc)
+		npte |= pmap_pg_wc;
+
+	opte = i386_atomic_testset_uq(&ptes[atop(va)], npte);
+	if (ptp)
+		ptp->wire_count += ptp_count;
+	pmap->pm_stats.resident_count += resident_count;
+	pmap->pm_stats.wired_count += wired_count;
+
+	if (pmap_valid_entry(opte)) {
+		if (nocache && (opte & PG_N) == 0)
+			wbinvd(); /* XXX clflush before we enter? */
+		pmap_tlb_shootpage(pmap, va);
+	}
+
+	pmap_unmap_ptes_pae(pmap);
+	pmap_tlb_shootwait();
+
+	error = 0;
+
+out:
+	if (pve)
+		pool_put(&pmap_pv_pool, pve);
+	if (opve)
+		pool_put(&pmap_pv_pool, opve);
+
+	return error;
+}
+
+
 /*
  * defined as macro in pmap.h
  */
@@ -1703,9 +1963,12 @@ pmap_enter_pae(struct pmap *pmap, vaddr_t va, paddr_t pa, vm_prot_t prot,
 	struct vm_page *pg = NULL;
 	int error, wired_count, resident_count, ptp_count;
 
+	if (pmap->pm_type == PMAP_TYPE_EPT) {
+		return pmap_enter_pae_ept(pmap, va, pa, prot, flags);
+	}
+
 	KASSERT(!(wc && nocache));
 	pa &= PMAP_PA_MASK;	/* nuke flags from pa */
-
 #ifdef DIAGNOSTIC
 	/* sanity check: totally out of range? */
 	if (va >= VM_MAX_KERNEL_ADDRESS)
@@ -1896,6 +2159,8 @@ enter_now:
 	pmap_tlb_shootwait();
 
 	error = 0;
+	if (pmap->pm_type == PMAP_TYPE_EPT) {
+	}
 
 out:
 	if (pve)

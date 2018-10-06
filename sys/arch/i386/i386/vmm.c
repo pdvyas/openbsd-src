@@ -39,10 +39,10 @@
 
 #include <dev/isa/isareg.h>
 
-/* #define VMM_DEBUG */
+#define VMM_DEBUG
 
 #ifdef VMM_DEBUG
-int vmm_debug = 0;
+int vmm_debug = 1;
 #define DPRINTF(x...)	do { if (vmm_debug) printf(x); } while(0)
 #else
 #define DPRINTF(x...)
