@@ -538,7 +538,7 @@ pmap_map_ptes_pae(struct pmap *pmap)
 #endif
 	if (!pmap_valid_entry(opde) || (opde & PG_FRAME) != pmap->pm_pdidx[0]) {
 		if (pmap->pm_type == PMAP_TYPE_EPT)
-			printf("IN IF COND NORMAL\n");
+			panic("why?");
 		APDP_PDE[0] = pmap->pm_pdidx[0] | PG_RW | PG_V | PG_U | PG_M;
 		APDP_PDE[1] = pmap->pm_pdidx[1] | PG_RW | PG_V | PG_U | PG_M;
 		APDP_PDE[2] = pmap->pm_pdidx[2] | PG_RW | PG_V | PG_U | PG_M;
@@ -1724,6 +1724,13 @@ pmap_map_ptes_pae_ept(struct pmap *pmap)
 	return(APTE_BASE);
 }
 
+vaddr_t
+get_va(paddr_t hpa) {
+	vaddr_t va;
+	va = (vaddr_t) km_alloc(PAGE_SIZE, &kv_page, &kp_none, &kd_nowait);
+	pmap_kenter_pa(va, hpa, PROT_READ | PROT_WRITE);
+	return va;
+}
 
 int
 pmap_enter_pae_ept(struct pmap *pmap, vaddr_t gpa, paddr_t hpa, vm_prot_t prot,
@@ -1734,6 +1741,8 @@ pmap_enter_pae_ept(struct pmap *pmap, vaddr_t gpa, paddr_t hpa, vm_prot_t prot,
 	struct vm_page *ptp, *pptp, *pg;
 	paddr_t npa;
 	struct uvm_object *obj;
+
+	printf("mapping gpa=0x%lx hpa=0x%lx\n", gpa, hpa);
 
 	if (gpa > MAXDSIZ)
 		return ENOMEM;
@@ -1785,7 +1794,8 @@ pmap_enter_pae_ept(struct pmap *pmap, vaddr_t gpa, paddr_t hpa, vm_prot_t prot,
 		pptp = PHYS_TO_VM_PAGE(npa);
 	}
 
-	pd = (pd_entry_t *)PMAP_DIRECT_MAP(npa);
+	/* pd = (pd_entry_t *)PMAP_DIRECT_MAP(npa); */
+	pd = (pd_entry_t *)get_va(npa);
 	if (!pd)
 		panic("%s: can't locate PDPT @ pa=0x%llx\n", __func__,
 		    (uint64_t)npa);
@@ -1826,7 +1836,8 @@ pmap_enter_pae_ept(struct pmap *pmap, vaddr_t gpa, paddr_t hpa, vm_prot_t prot,
 		pptp = PHYS_TO_VM_PAGE(npa);
 	}
 
-	pd = (pd_entry_t *)PMAP_DIRECT_MAP(npa);
+	/* pd = (pd_entry_t *)PMAP_DIRECT_MAP(npa); */
+	pd = (pd_entry_t *)get_va(npa);
 	if (!pd)
 		panic("%s: can't locate PD page @ pa=0x%llx\n", __func__,
 		    (uint64_t)npa);
@@ -1863,7 +1874,8 @@ pmap_enter_pae_ept(struct pmap *pmap, vaddr_t gpa, paddr_t hpa, vm_prot_t prot,
 			panic("%s: ptp page vanished?", __func__);
 	}
 
-	pd = (pd_entry_t *)PMAP_DIRECT_MAP(npa);
+	/* pd = (pd_entry_t *)PMAP_DIRECT_MAP(npa); */
+	pd = (pd_entry_t *)get_va(npa);
 	if (!pd)
 		panic("%s: can't locate PT page @ pa=0x%llx\n", __func__,
 		    (uint64_t)npa);
@@ -1912,9 +1924,9 @@ pmap_enter_pae(struct pmap *pmap, vaddr_t va, paddr_t pa, vm_prot_t prot,
 	struct vm_page *pg = NULL;
 	int error, wired_count, resident_count, ptp_count;
 
-	/* if (pmap->pm_type == PMAP_TYPE_EPT) { */
-	/* 	return pmap_enter_pae_ept(pmap, va, pa, prot, flags); */
-	/* } */
+	if (pmap->pm_type == PMAP_TYPE_EPT) {
+		return pmap_enter_pae_ept(pmap, va, pa, prot, flags);
+	}
 
 	KASSERT(!(wc && nocache));
 	pa &= PMAP_PA_MASK;	/* nuke flags from pa */
