@@ -71,7 +71,7 @@
 #include "pf.h"
 #include "pty.h"
 
-#if defined(__amd64__) || defined(__i386__)
+#if defined(__amd64__)
 #include "vmm.h"
 #if NVMM > 0
 #include <machine/conf.h>

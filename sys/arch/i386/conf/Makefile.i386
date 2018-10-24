@@ -162,7 +162,7 @@ depend obj:
 
 locore0.o: ${_machdir}/${_mach}/locore0.S assym.h
 locore.o mutex.o in_cksum.o mptramp.o: assym.h
-kvm86call.o acpi_wakecode.o vmm_support.o: assym.h
+kvm86call.o acpi_wakecode.o: assym.h
 
 hardlink-obsd:
 	[[ ! -f /bsd ]] || cmp -s bsd /bsd || ln -f /bsd /obsd

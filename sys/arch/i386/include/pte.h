@@ -67,13 +67,6 @@
 #define PG_AVAIL3	0x00000800	/* ignored by hardware */
 #define	PG_PATLG	0x00001000	/* PAT on large pages */
 
-/* EPT PTE bits */
-#define EPT_R		(1ULL << 0)
-#define EPT_W		(1ULL << 1)
-#define EPT_X		(1ULL << 2)
-#define EPT_WB		(6ULL << 3)
-#define EPT_PS		(1ULL << 7)
-
 /* Cacheability bits when we are using PAT */
 #define	PG_WB		(0)		/* The default */
 #define	PG_WC		(PG_WT)		/* WT and CD is WC */
