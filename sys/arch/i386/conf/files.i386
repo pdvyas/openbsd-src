@@ -392,14 +392,6 @@ file	arch/i386/i386/acpi_machdep.c		acpi
 file	arch/i386/i386/acpi_wakecode.S		acpi & !small_kernel
 
 #
-# VMM
-#
-device vmm {}
-attach vmm at mainbus
-file	arch/i386/i386/vmm.c			vmm needs-flag
-file	arch/i386/i386/vmm_support.S		vmm
-
-#
 # IPMI
 #
 attach	ipmi at mainbus
