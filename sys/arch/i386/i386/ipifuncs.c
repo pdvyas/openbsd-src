@@ -52,7 +52,6 @@
 #include <machine/i82093var.h>
 #include <machine/db_machdep.h>
 #include <machine/mplock.h>
-#include <machine/vmmvar.h>
 
 void i386_ipi_nop(struct cpu_info *);
 void i386_ipi_halt(struct cpu_info *);
