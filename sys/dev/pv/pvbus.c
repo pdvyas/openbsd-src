@@ -36,7 +36,6 @@
 #include <machine/cpu.h>
 #include <machine/conf.h>
 #include <machine/bus.h>
-#include <machine/vmmvar.h>
 
 #include <dev/rndvar.h>
 

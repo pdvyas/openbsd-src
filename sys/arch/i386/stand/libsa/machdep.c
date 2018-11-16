@@ -33,7 +33,6 @@
 #include <machine/biosvar.h>
 #include <machine/psl.h>
 #include <machine/specialreg.h>
-#include <machine/vmmvar.h>
 
 #ifdef EFIBOOT
 #include "efiboot.h"
@@ -47,7 +46,7 @@ volatile struct BIOS_regs	BIOS_regs;
 #define CKPT(c) /* c */
 #endif
 
-const char *vmm_hv_signature = VMM_HV_SIGNATURE;
+const char *vmm_hv_signature = "OpenBSDVMM58";
 
 void
 machdep(void)
