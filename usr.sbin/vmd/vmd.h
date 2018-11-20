@@ -20,6 +20,8 @@
 #include <sys/queue.h>
 #include <sys/socket.h>
 
+#include <dev/vmmvar.h>
+
 #include <machine/vmmvar.h>
 
 #include <net/if.h>

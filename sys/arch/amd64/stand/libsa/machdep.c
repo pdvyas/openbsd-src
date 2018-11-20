@@ -33,6 +33,7 @@
 #include <machine/biosvar.h>
 #include <machine/specialreg.h>
 #include <machine/vmmvar.h>
+#include <dev/vmmvar.h>
 
 #ifdef EFIBOOT
 #include "efiboot.h"

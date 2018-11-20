@@ -39,6 +39,7 @@
 #include <machine/vmmvar.h>
 
 #include <dev/isa/isareg.h>
+#include <dev/vmmvar.h>
 
 /* #define VMM_DEBUG */
 
