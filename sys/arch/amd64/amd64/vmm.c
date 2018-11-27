@@ -39,6 +39,7 @@
 #include <machine/vmmvar.h>
 
 #include <dev/isa/isareg.h>
+#include <dev/pv/pvreg.h>
 
 /* #define VMM_DEBUG */
 
@@ -5859,12 +5860,12 @@ svm_handle_msr(struct vcpu *vcpu)
 		if (*rcx == MSR_EFER) {
 			vmcb->v_efer = *rax | EFER_SVME;
 		} else {
-#ifdef VMM_DEBUG
+/* #ifdef VMM_DEBUG */
 			/* Log the access, to be able to identify unknown MSRs */
-			DPRINTF("%s: wrmsr exit, msr=0x%llx, discarding data "
+			printf("%s: wrmsr exit, msr=0x%llx, discarding data "
 			    "written from guest=0x%llx:0x%llx\n", __func__,
 			    *rcx, *rdx, *rax);
-#endif /* VMM_DEBUG */
+/* #endif #<{(| VMM_DEBUG |)}># */
 		}
 	} else {
 		msr = rdmsr(*rcx);
@@ -6126,6 +6127,13 @@ vmm_handle_cpuid(struct vcpu *vcpu)
 		*rbx = *((uint32_t *)&vmm_hv_signature[0]);
 		*rcx = *((uint32_t *)&vmm_hv_signature[4]);
 		*rdx = *((uint32_t *)&vmm_hv_signature[8]);
+		break;
+	case 0x4000001:	/* Hypervisor information */
+		printf("here!?? \n");
+		*rax = (1 << KVM_FEATURE_CLOCKSOURCE2);
+		*rbx = 0;
+		*rcx = 0;
+		*rdx = 0;
 		break;
 	case 0x80000000:	/* Extended function level */
 		*rax = 0x80000007; /* curcpu()->ci_pnfeatset */

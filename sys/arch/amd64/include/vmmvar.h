@@ -863,6 +863,8 @@ struct vcpu {
 
 	uint8_t vc_event;
 
+	paddr_t vc_pvclock_system_pa;
+
 	/* VMX only */
 	uint64_t vc_vmx_basic;
 	uint64_t vc_vmx_entry_ctls;

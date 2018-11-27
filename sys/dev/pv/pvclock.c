@@ -122,7 +122,13 @@ pvclock_match(struct device *parent, void *match, void *aux)
 		if ((hv->hv_features &
 		    (1 << KVM_FEATURE_CLOCKSOURCE_STABLE_BIT)) == 0)
 			return (0);
+		printf("I AM IN\n");
 
+		return (1);
+	}
+
+	hv = &pva->pva_hv[PVBUS_OPENBSD];
+	if (hv->hv_base != 0) {
 		return (1);
 	}
 
