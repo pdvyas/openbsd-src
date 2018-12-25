@@ -156,6 +156,7 @@ pvclock_attach(struct device *parent, struct device *self, void *aux)
 	}
 
 	wrmsr(KVM_MSR_SYSTEM_TIME, pa | PVCLOCK_SYSTEM_TIME_ENABLE);
+	printf("guest pvclock pa: %lu\n", pa);
 	sc->sc_paddr = pa;
 
 	ti = sc->sc_time;
@@ -163,6 +164,8 @@ pvclock_attach(struct device *parent, struct device *self, void *aux)
 		version = pvclock_read_begin(ti);
 		flags = ti->ti_flags;
 	} while (!pvclock_read_done(ti, version));
+	printf("guest vm flags: %d\n", flags);
+	printf("guest vm version: %d\n", version);
 
 	if ((flags & PVCLOCK_FLAG_TSC_STABLE) == 0) {
 		wrmsr(KVM_MSR_SYSTEM_TIME, pa & ~PVCLOCK_SYSTEM_TIME_ENABLE);

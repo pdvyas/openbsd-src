@@ -1,4 +1,4 @@
-/*	$OpenBSD: vmm.c,v 1.222 2018/12/10 21:13:59 claudio Exp $	*/
+
 /*
  * Copyright (c) 2014 Mike Larkin <mlarkin@openbsd.org>
  *
@@ -63,6 +63,17 @@ void *l1tf_flush_region;
 #define VMX_EXIT_INFO_HAVE_REASON	0x2
 #define VMX_EXIT_INFO_COMPLETE				\
     (VMX_EXIT_INFO_HAVE_RIP | VMX_EXIT_INFO_HAVE_REASON)
+
+struct pvclock_time_info {
+	uint32_t		 ti_version;
+	uint32_t		 ti_pad0;
+	uint64_t		 ti_tsc_timestamp;
+	uint64_t		 ti_system_time;
+	uint32_t		 ti_tsc_to_system_mul;
+	int8_t			 ti_tsc_shift;
+	uint8_t			 ti_flags;
+	uint8_t			 ti_pad[2];
+} __packed;
 
 struct vm {
 	vm_map_t		 vm_map;
@@ -199,6 +210,8 @@ void vmx_setmsrbw(struct vcpu *, uint32_t);
 void vmx_setmsrbrw(struct vcpu *, uint32_t);
 void svm_set_clean(struct vcpu *, uint32_t);
 void svm_set_dirty(struct vcpu *, uint32_t);
+
+int vmm_update_pvclock(struct vcpu *);
 
 #ifdef VMM_DEBUG
 void dump_vcpu(struct vcpu *);
@@ -3181,6 +3194,7 @@ vcpu_init(struct vcpu *vcpu)
 	vcpu->vc_virt_mode = vmm_softc->mode;
 	vcpu->vc_state = VCPU_STATE_STOPPED;
 	vcpu->vc_vpid = 0;
+	vcpu->vc_pvclock_system_gpa = 0;
 	if (vmm_softc->mode == VMM_MODE_VMX ||
 	    vmm_softc->mode == VMM_MODE_EPT)
 		ret = vcpu_init_vmx(vcpu);
@@ -3982,6 +3996,7 @@ vcpu_run_vmx(struct vcpu *vcpu, struct vm_run_params *vrp)
 	}
 
 	while (ret == 0) {
+		vmm_update_pvclock(vcpu);
 		if (!resume) {
 			/*
 			 * We are launching for the first time, or we are
@@ -5859,6 +5874,11 @@ svm_handle_msr(struct vcpu *vcpu)
 	if (vmcb->v_exitinfo1 == 1) {
 		if (*rcx == MSR_EFER) {
 			vmcb->v_efer = *rax | EFER_SVME;
+		} else if (*rcx == KVM_MSR_SYSTEM_TIME) {
+			printf("PVCLOCK MSR ACCESSED!\n");
+			vcpu->vc_pvclock_system_gpa = ((*rax & 0xFFFFFFFFULL) | (*rdx  << 32));
+			printf("pvclock gpa: %lu\n", vcpu->vc_pvclock_system_gpa);
+			vmm_update_pvclock(vcpu);
 		} else {
 /* #ifdef VMM_DEBUG */
 			/* Log the access, to be able to identify unknown MSRs */
@@ -6255,6 +6275,7 @@ vcpu_run_svm(struct vcpu *vcpu, struct vm_run_params *vrp)
 	}
 
 	while (ret == 0) {
+		vmm_update_pvclock(vcpu);
 		if (!resume) {
 			/*
 			 * We are launching for the first time, or we are
@@ -6489,6 +6510,35 @@ vmm_free_vpid(uint16_t vpid)
 
 	DPRINTF("%s: freed VPID/ASID %d\n", __func__, vpid);
 	rw_exit_write(&vmm_softc->vpid_lock);
+}
+
+int
+vmm_update_pvclock(struct vcpu *vcpu) {
+	struct pvclock_time_info *pvclock_ti;
+	struct timespec tv;
+	struct vm *vm = vcpu->vc_parent;
+	paddr_t pvclock_hpa, pvclock_gpa;
+	if (vcpu->vc_pvclock_system_gpa) {
+		/* printf("UPDATING!\n"); */
+		pvclock_gpa = vcpu->vc_pvclock_system_gpa & 0xFFFFFFFFFFFFFFF0;
+		if (!pmap_extract(vm->vm_map->pmap, pvclock_gpa, &pvclock_hpa))
+			return (EINVAL);
+		pvclock_ti = (void*) PMAP_DIRECT_MAP(pvclock_hpa);
+		// START  (should be odd)
+		pvclock_ti->ti_version++;
+
+		pvclock_ti->ti_tsc_timestamp = rdtsc();
+		nanotime(&tv);
+		pvclock_ti->ti_system_time = tv.tv_sec*1000000000L + tv.tv_nsec;
+		pvclock_ti->ti_tsc_shift = -20;
+		pvclock_ti->ti_tsc_to_system_mul = (int) ((1000000000L << 19) / tsc_frequency);
+		pvclock_ti->ti_flags = 0x01;
+		/* printf("host flags: %d\n", pvclock_ti->ti_flags); */
+
+		// END  (should be even)
+		pvclock_ti->ti_version++;
+	}
+	return (0);
 }
 
 /*

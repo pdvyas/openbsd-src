@@ -863,7 +863,7 @@ struct vcpu {
 
 	uint8_t vc_event;
 
-	paddr_t vc_pvclock_system_pa;
+	paddr_t vc_pvclock_system_gpa;
 
 	/* VMX only */
 	uint64_t vc_vmx_basic;
