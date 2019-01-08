@@ -90,7 +90,7 @@ struct pvbus_type {
 	{ "VMwareVMware",	"VMware" },
 	{ "XenVMMXenVMM",	"Xen",	pvbus_xen, pvbus_xen_print },
 	{ "bhyve bhyve ",	"bhyve" },
-	{ "OpenBSDVMM58",	"OpenBSD" },
+	{ VMM_HV_SIGNATURE,	"OpenBSD" },
 };
 
 struct bus_dma_tag pvbus_dma_tag = {
