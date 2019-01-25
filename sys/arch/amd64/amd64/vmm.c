@@ -4508,6 +4508,15 @@ svm_handle_exit(struct vcpu *vcpu)
 	case SVM_VMEXIT_MWAIT:
 	case SVM_VMEXIT_MWAIT_CONDITIONAL:
 	case SVM_VMEXIT_MONITOR:
+	case SVM_VMEXIT_VMRUN:
+	case SVM_VMEXIT_VMMCALL:
+	case SVM_VMEXIT_VMLOAD:
+	case SVM_VMEXIT_VMSAVE:
+	case SVM_VMEXIT_STGI:
+	case SVM_VMEXIT_CLGI:
+	case SVM_VMEXIT_SKINIT:
+	case SVM_VMEXIT_RDTSCP:
+	case SVM_VMEXIT_ICEBP:
 		ret = vmm_inject_ud(vcpu);
 		update_rip = 0;
 		break;
