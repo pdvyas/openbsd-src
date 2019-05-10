@@ -93,6 +93,8 @@ void restore_mem(int, struct vm_create_params *);
 void pause_vm(struct vm_create_params *);
 void unpause_vm(struct vm_create_params *);
 
+int vcpu_read_guest_linear(struct vm_exit *, uint64_t, uint64_t *, int);
+
 static struct vm_mem_range *find_gpa_range(struct vm_create_params *, paddr_t,
     size_t);
 
@@ -1946,4 +1948,130 @@ get_input_data(struct vm_exit *vei, uint32_t *data)
 		    vei->vei.vei_size);
 	}
 
+}
+
+/*
+ * vcpu_read_guest_linear
+ *
+ * Translates guest linear address and places the guest physical address in
+ * paddr.
+ *
+ * Parameters:
+ *  exit: vm_exit struct
+ *  addr: guest linear address to read
+ *  paddr: translated physical address after walking page tables
+ *  dir: direction of intended operation 0 for read, 1 for write. This is used
+ *   to check access rights.
+ *
+ * Return values:
+ *  0: the bytes were successfully read
+ *  EINVAL: invalid paddr
+ *  EFAULT: the bytes could not be read from 'addr'. Zero or more bytes may
+ *   have been read.
+ *  Other errno-style errors returned from ioctl.
+ */
+int
+vcpu_read_guest_linear(struct vm_exit* exit, uint64_t addr,
+    uint64_t* paddr, int dir)
+{
+	int level=0, shift;
+	uint64_t pte=0, pt_paddr, pte_paddr, cr3, mask, low_mask,
+	   high_mask, shift_width=9, pte_size;
+	uint16_t ptidx;
+	struct vcpu_reg_state *vrs;
+
+	vrs = &exit->vrs;
+
+	if (!paddr)
+		return (EINVAL);
+
+	if (!(vrs->vrs_crs[VCPU_REGS_CR0] & CR0_PG)) {
+		*paddr = addr;
+		return (0);
+	}
+
+	cr3 = vrs->vrs_crs[VCPU_REGS_CR3];
+	pt_paddr = cr3;
+
+	log_debug("%s: read guest linear addr 0x%llx cr3=0x%llx",
+	    __func__, addr, cr3);
+
+	/* 4 level paging */
+	if ((vrs->vrs_crs[VCPU_REGS_CR0] & CR0_PE) &&
+			(vrs->vrs_crs[VCPU_REGS_CR4] & CR4_PAE) &&
+			(vrs->vrs_msrs[VCPU_REGS_EFER] & EFER_LMA)) {
+		level = 4;
+		mask = L4_MASK;
+		shift = L4_SHIFT;
+		pte_size = sizeof(uint64_t);
+	/* 32 bit with PAE paging */
+	} else if ((vrs->vrs_crs[VCPU_REGS_CR0] & CR0_PE) &&
+			(vrs->vrs_crs[VCPU_REGS_CR4] & CR4_PAE) &&
+			(!(vrs->vrs_msrs[VCPU_REGS_EFER] & EFER_LMA))) {
+		level = 3;
+		mask = L3_MASK;
+		shift = L3_SHIFT;
+		pte_size = sizeof(uint64_t);
+	/* 32 bit paging */
+	} else if ((vrs->vrs_crs[VCPU_REGS_CR0] & CR0_PE) &&
+			(!(vrs->vrs_crs[VCPU_REGS_CR4] & CR4_PAE)) &&
+			(!(vrs->vrs_msrs[VCPU_REGS_EFER] & EFER_LMA))) {
+
+		if (vrs->vrs_crs[VCPU_REGS_CR4] & CR4_PSE)
+			return (EINVAL);
+
+		level = 2;
+		shift_width = 10;
+		mask = 0xffc00000;
+		shift = 22;
+		pte_size = sizeof(uint32_t);
+	} else
+		return (EINVAL);
+
+	for (;level > 0; level--) {
+		ptidx = (addr & mask) >> shift;
+		pte_paddr = (pt_paddr) + (ptidx * pte_size);
+
+		log_debug("%s: reading pte level %d @ 0x%llx", __func__,
+		    level, pte_paddr);
+		if (read_mem(pte_paddr, &pte, pte_size)) {
+			log_warn("%s: failed to read pte", __func__);
+			return (EFAULT);
+		}
+
+		/* XXX: Set CR2  */
+		if (!(pte & PG_V))
+			return (EFAULT);
+
+		/* XXX: Check for SMAP */
+		if ((dir == 1) && !(pte & PG_RW))
+			return (EPERM);
+
+		if ((exit->cpl > 0) && !(pte & PG_u))
+			return (EPERM);
+
+		pte = pte | PG_U;
+		if (dir)
+			pte = pte | PG_M;
+		if (write_mem(pte_paddr, &pte, pte_size)) {
+			log_warn("%s: failed to write back flags to pte", __func__);
+			return (EIO);
+		}
+
+		/* XXX: EINVAL if in 32bit and  PG_PS is 1 but CR4.PSE is 0 */
+		if (pte & PG_PS)
+			break;
+
+		if (level > 1) {
+			pt_paddr = pte & PG_FRAME;
+			shift -= shift_width;
+			mask = mask >> shift_width;
+		}
+	}
+
+	low_mask = (1 << shift) - 1;
+	high_mask = (((uint64_t)1 << ((pte_size * 8) - 1)) - 1) ^ low_mask;
+	*paddr = (pte & high_mask) | (addr & low_mask);
+
+	return 0;
 }
