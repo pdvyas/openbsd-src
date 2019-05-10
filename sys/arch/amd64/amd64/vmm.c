@@ -4355,6 +4355,7 @@ vcpu_run_vmx(struct vcpu *vcpu, struct vm_run_params *vrp)
 	/* Copy the VCPU register state to the exit structure */
 	if (vcpu_readregs_vmx(vcpu, VM_RWREGS_ALL, &vcpu->vc_exit.vrs))
 		ret = EINVAL;
+	vcpu->vc_exit.cpl = vmm_get_guest_cpu_cpl(vcpu);
 	/*
 	 * We are heading back to userspace (vmd), either because we need help
 	 * handling an exit, a guest interrupt is pending, or we failed in some
