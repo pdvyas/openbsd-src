@@ -3947,6 +3947,140 @@ vmm_fpusave(struct vcpu *vcpu)
 }
 
 /*
+ * vmm_translate_gva
+ *
+ * Translates a guest virtual address to a guest physical address by walking
+ * the currently active page table (if needed).
+ *
+ * Note - this function can possibly alter the supplied VCPU state.
+ *  Specifically, it may inject exceptions depending on the current VCPU
+ *  configuration, and may alter %cr2 on #PF. Consequently, this function
+ *  should only be used as part of instruction emulation.
+ *
+ * Parameters:
+ *  vcpu: The VCPU this translation should be performed for (guest MMU settings
+ *   are gathered from this VCPU)
+ *  va: virtual address to translate
+ *  pa: pointer to paddr_t variable that will receive the translated physical
+ *   address. 'pa' is unchanged on error.
+ *  mode: one of PROT_READ, PROT_WRITE, PROT_EXEC indicating the mode in which
+ *   the address should be translated
+ *
+ * Return values:
+ *  0: the address was successfully translated - 'pa' contains the physical
+ *     address currently mapped by 'va'.
+ *  EFAULT: the PTE for 'VA' is unmapped. A #PF will be injected in this case
+ *     and %cr2 set in the vcpu structure.
+ *  EINVAL: an error occurred reading paging table structures
+ */
+int
+vmm_translate_gva(struct vcpu *vcpu, uint64_t va, uint64_t *pa, int mode)
+{
+	int level, shift, pdidx;
+	uint64_t pte, pt_paddr, pte_paddr, cr3, mask, low_mask, high_mask;
+	uint64_t shift_width, pte_size, *hva;
+	paddr_t hpa;
+	struct vcpu_reg_state vrs;
+
+	level = 0;
+	pte = 0;
+	shift_width = 9;
+
+	if (vmm_softc->mode == VMM_MODE_EPT ||
+	    vmm_softc->mode == VMM_MODE_VMX) {
+		if (vcpu_readregs_vmx(vcpu, VM_RWREGS_ALL, &vrs)) 
+			return (EINVAL);
+	} else if (vmm_softc->mode == VMM_MODE_RVI ||
+	    vmm_softc->mode == VMM_MODE_SVM) {
+		if (vcpu_readregs_svm(vcpu, VM_RWREGS_ALL, &vrs))
+			return (EINVAL);
+	}
+
+	DPRINTF("%s: guest %%cr0=0x%llx, %%cr3=0x%llx\n", __func__,
+	    vrs.vrs_crs[VCPU_REGS_CR0], vrs.vrs_crs[VCPU_REGS_CR3]);
+
+	if (!(vrs.vrs_crs[VCPU_REGS_CR0] & CR0_PG)) {
+		DPRINTF("%s: unpaged, va=pa=0x%llx\n", __func__,
+		    va);
+		*pa = va;
+		return (0);
+	}
+
+	cr3 = vrs.vrs_crs[VCPU_REGS_CR3];
+	pt_paddr = cr3;
+
+	if (vrs.vrs_crs[VCPU_REGS_CR0] & CR0_PE) {
+		if (vrs.vrs_crs[VCPU_REGS_CR4] & CR4_PAE) {
+			pte_size = sizeof(uint64_t);
+
+			if (vrs.vrs_msrs[VCPU_REGS_EFER] & EFER_LMA) {
+				level = 4;
+				mask = L4_MASK;
+				shift = L4_SHIFT;
+			} else {
+				level = 3;
+				mask = L3_MASK;
+				shift = L3_SHIFT;
+			}
+		} else {
+			level = 2;
+			shift_width = 10;
+			mask = 0xFFC00000;
+			shift = 22;
+			pte_size = sizeof(uint32_t);
+		}
+	} else {
+		return (EINVAL);
+	}
+
+	DPRINTF("%s: pte size=%lld level=%d mask=0x%llx, shift=%d, "
+	    "shift_width=%lld\n", __func__, pte_size, level, mask, shift,
+	    shift_width);
+
+	for (;level > 0; level--) {
+		pdidx = (va & mask) >> shift;
+		pte_paddr = (pt_paddr) + (pdidx * pte_size);
+
+		DPRINTF("%s: read pte level %d @ GPA 0x%llx\n", __func__,
+		    level, pte_paddr);
+		if (!pmap_extract(vcpu->vc_parent->vm_map->pmap, pte_paddr,
+		    &hpa)) {
+			DPRINTF("%s: cannot extract HPA for GPA 0x%llx\n",
+			    __func__, pte_paddr);
+			return (EINVAL);
+		}
+
+		hpa = hpa | (pte_paddr & 0xFFF);
+		hva = (uint64_t *)PMAP_DIRECT_MAP(hpa);
+		DPRINTF("%s: GPA 0x%llx -> HPA 0x%llx -> HVA 0x%llx\n",
+		    __func__, pte_paddr, (uint64_t)hpa, (uint64_t)hva);
+		if (pte_size == 8)
+			pte = *hva;
+		else
+			pte = *(uint32_t *)hva;
+
+		DPRINTF("%s: PTE @ 0x%llx = 0x%llx\n", __func__, pte_paddr, pte);
+
+		if (level > 1) {
+			pt_paddr = pte & PG_FRAME;
+			shift -= shift_width;
+			mask = mask >> shift_width;
+		}
+	}
+
+	low_mask = (1 << shift) - 1;
+	high_mask = (((uint64_t)1ULL << ((pte_size * 8) - 1)) - 1) ^ low_mask;
+	*pa = (pte & high_mask) | (va & low_mask);
+
+	DPRINTF("%s: final GPA for GVA 0x%llx = 0x%llx\n", __func__,
+	    va, *pa);
+
+	return (0);
+
+}
+
+
+/*
  * vcpu_run_vmx
  *
  * VMX main loop used to run a VCPU.
