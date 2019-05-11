@@ -93,7 +93,7 @@ void restore_mem(int, struct vm_create_params *);
 void pause_vm(struct vm_create_params *);
 void unpause_vm(struct vm_create_params *);
 
-int vcpu_read_guest_linear(struct vm_exit *, uint64_t, uint64_t *, int);
+int translate_gva(struct vm_exit*, uint64_t, uint64_t *, int);
 
 static struct vm_mem_range *find_gpa_range(struct vm_create_params *, paddr_t,
     size_t);
@@ -1954,110 +1954,113 @@ get_input_data(struct vm_exit *vei, uint32_t *data)
 }
 
 /*
- * vcpu_read_guest_linear
+ * translate_gva
  *
- * Translates guest linear address and places the guest physical address in
- * paddr.
+ * Translates a guest virtual address to a guest physical address by walking
+ * the currently active page table (if needed).
+ *
+ * Note - this function can possibly alter the supplied VCPU state.
+ *  Specifically, it may inject exceptions depending on the current VCPU
+ *  configuration, and may alter %cr2 on #PF. Consequently, this function
+ *  should only be used as part of instruction emulation.
  *
  * Parameters:
- *  exit: vm_exit struct
- *  addr: guest linear address to read
- *  paddr: translated physical address after walking page tables
- *  dir: direction of intended operation 0 for read, 1 for write. This is used
- *   to check access rights.
+ *  exit: The VCPU this translation should be performed for (guest MMU settings
+ *   are gathered from this VCPU)
+ *  va: virtual address to translate
+ *  pa: pointer to paddr_t variable that will receive the translated physical
+ *   address. 'pa' is unchanged on error.
+ *  mode: one of PROT_READ, PROT_WRITE, PROT_EXEC indicating the mode in which
+ *   the address should be translated
  *
  * Return values:
- *  0: the bytes were successfully read
- *  EINVAL: invalid paddr
- *  EFAULT: the bytes could not be read from 'addr'. Zero or more bytes may
- *   have been read.
- *  Other errno-style errors returned from ioctl.
+ *  0: the address was successfully translated - 'pa' contains the physical
+ *     address currently mapped by 'va'.
+ *  EFAULT: the PTE for 'VA' is unmapped. A #PF will be injected in this case
+ *     and %cr2 set in the vcpu structure.
+ *  EINVAL: an error occurred reading paging table structures
  */
 int
-vcpu_read_guest_linear(struct vm_exit* exit, uint64_t addr,
-    uint64_t* paddr, int dir)
+translate_gva(struct vm_exit* exit, uint64_t va, uint64_t* pa, int mode)
 {
-	int level=0, shift;
-	uint64_t pte=0, pt_paddr, pte_paddr, cr3, mask, low_mask,
-	   high_mask, shift_width=9, pte_size;
-	uint16_t ptidx;
+	int level, shift, pdidx;
+	uint64_t pte, pt_paddr, pte_paddr, mask, low_mask, high_mask;
+	uint64_t shift_width, pte_size;
 	struct vcpu_reg_state *vrs;
 
 	vrs = &exit->vrs;
 
-	if (!paddr)
+	if (!pa)
 		return (EINVAL);
 
 	if (!(vrs->vrs_crs[VCPU_REGS_CR0] & CR0_PG)) {
-		*paddr = addr;
+		log_debug("%s: unpaged, va=pa=0x%llx\n", __func__, va);
+		*pa = va;
 		return (0);
 	}
 
-	cr3 = vrs->vrs_crs[VCPU_REGS_CR3];
-	pt_paddr = cr3;
+	pt_paddr = vrs->vrs_crs[VCPU_REGS_CR3];
 
-	log_debug("%s: read guest linear addr 0x%llx cr3=0x%llx",
-	    __func__, addr, cr3);
+	log_debug("%s: guest %%cr0=0x%llx, %%cr3=0x%llx\n", __func__,
+	    vrs->vrs_crs[VCPU_REGS_CR0], vrs->vrs_crs[VCPU_REGS_CR3]);
 
-	/* 4 level paging */
-	if ((vrs->vrs_crs[VCPU_REGS_CR0] & CR0_PE) &&
-			(vrs->vrs_crs[VCPU_REGS_CR4] & CR4_PAE) &&
-			(vrs->vrs_msrs[VCPU_REGS_EFER] & EFER_LMA)) {
-		level = 4;
-		mask = L4_MASK;
-		shift = L4_SHIFT;
-		pte_size = sizeof(uint64_t);
-	/* 32 bit with PAE paging */
-	} else if ((vrs->vrs_crs[VCPU_REGS_CR0] & CR0_PE) &&
-			(vrs->vrs_crs[VCPU_REGS_CR4] & CR4_PAE) &&
-			(!(vrs->vrs_msrs[VCPU_REGS_EFER] & EFER_LMA))) {
-		level = 3;
-		mask = L3_MASK;
-		shift = L3_SHIFT;
-		pte_size = sizeof(uint64_t);
-	/* 32 bit paging */
-	} else if ((vrs->vrs_crs[VCPU_REGS_CR0] & CR0_PE) &&
-			(!(vrs->vrs_crs[VCPU_REGS_CR4] & CR4_PAE)) &&
-			(!(vrs->vrs_msrs[VCPU_REGS_EFER] & EFER_LMA))) {
+	if (vrs->vrs_crs[VCPU_REGS_CR0] & CR0_PE) {
+		if (vrs->vrs_crs[VCPU_REGS_CR4] & CR4_PAE) {
+			pte_size = sizeof(uint64_t);
 
-		if (vrs->vrs_crs[VCPU_REGS_CR4] & CR4_PSE)
-			return (EINVAL);
-
-		level = 2;
-		shift_width = 10;
-		mask = 0xffc00000;
-		shift = 22;
-		pte_size = sizeof(uint32_t);
+			if (vrs->vrs_msrs[VCPU_REGS_EFER] & EFER_LMA) {
+				/* 4 level paging */
+				level = 4;
+				mask = L4_MASK;
+				shift = L4_SHIFT;
+			} else {
+				/* 32 bit with PAE paging */
+				level = 3;
+				mask = L3_MASK;
+				shift = L3_SHIFT;
+			}
+		} else {
+			/* 32 bit paging */
+			level = 2;
+			shift_width = 10;
+			mask = 0xFFC00000;
+			shift = 22;
+			pte_size = sizeof(uint32_t);
+		}
 	} else
 		return (EINVAL);
 
 	for (;level > 0; level--) {
-		ptidx = (addr & mask) >> shift;
-		pte_paddr = (pt_paddr) + (ptidx * pte_size);
+		pdidx = (va & mask) >> shift;
+		pte_paddr = (pt_paddr) + (pdidx * pte_size);
 
-		log_debug("%s: reading pte level %d @ 0x%llx", __func__,
+		log_debug("%s: read pte level %d @ GPA 0x%llx\n", __func__,
 		    level, pte_paddr);
 		if (read_mem(pte_paddr, &pte, pte_size)) {
 			log_warn("%s: failed to read pte", __func__);
 			return (EFAULT);
 		}
 
+		log_debug("%s: PTE @ 0x%llx = 0x%llx\n", __func__, pte_paddr,
+		    pte);
+
 		/* XXX: Set CR2  */
 		if (!(pte & PG_V))
 			return (EFAULT);
 
 		/* XXX: Check for SMAP */
-		if ((dir == 1) && !(pte & PG_RW))
+		if ((mode == PROT_WRITE) && !(pte & PG_RW))
 			return (EPERM);
 
 		if ((exit->cpl > 0) && !(pte & PG_u))
 			return (EPERM);
 
 		pte = pte | PG_U;
-		if (dir)
+		if (mode == PROT_WRITE)
 			pte = pte | PG_M;
 		if (write_mem(pte_paddr, &pte, pte_size)) {
-			log_warn("%s: failed to write back flags to pte", __func__);
+			log_warn("%s: failed to write back flags to pte",
+			    __func__);
 			return (EIO);
 		}
 
@@ -2073,8 +2076,10 @@ vcpu_read_guest_linear(struct vm_exit* exit, uint64_t addr,
 	}
 
 	low_mask = (1 << shift) - 1;
-	high_mask = (((uint64_t)1 << ((pte_size * 8) - 1)) - 1) ^ low_mask;
-	*paddr = (pte & high_mask) | (addr & low_mask);
+	high_mask = (((uint64_t)1ULL << ((pte_size * 8) - 1)) - 1) ^ low_mask;
+	*pa = (pte & high_mask) | (va & low_mask);
 
-	return 0;
+	log_debug("%s: final GPA for GVA 0x%llx = 0x%llx\n", __func__, va, *pa);
+
+	return (0);
 }

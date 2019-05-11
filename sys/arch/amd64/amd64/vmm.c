@@ -3980,7 +3980,7 @@ int
 vmm_translate_gva(struct vcpu *vcpu, uint64_t va, uint64_t *pa, int mode)
 {
 	int level, shift, pdidx;
-	uint64_t pte, pt_paddr, pte_paddr, cr3, mask, low_mask, high_mask;
+	uint64_t pte, pt_paddr, pte_paddr, mask, low_mask, high_mask;
 	uint64_t shift_width, pte_size, *hva;
 	paddr_t hpa;
 	struct vcpu_reg_state vrs;
@@ -4009,8 +4009,7 @@ vmm_translate_gva(struct vcpu *vcpu, uint64_t va, uint64_t *pa, int mode)
 		return (0);
 	}
 
-	cr3 = vrs.vrs_crs[VCPU_REGS_CR3];
-	pt_paddr = cr3;
+	pt_paddr = vrs.vrs_crs[VCPU_REGS_CR3];
 
 	if (vrs.vrs_crs[VCPU_REGS_CR0] & CR0_PE) {
 		if (vrs.vrs_crs[VCPU_REGS_CR4] & CR4_PAE) {
@@ -4064,6 +4063,26 @@ vmm_translate_gva(struct vcpu *vcpu, uint64_t va, uint64_t *pa, int mode)
 
 		DPRINTF("%s: PTE @ 0x%llx = 0x%llx\n", __func__, pte_paddr, pte);
 
+		/* XXX: Set CR2  */
+		if (!(pte & PG_V))
+			return (EFAULT);
+
+		/* XXX: Check for SMAP */
+		if ((mode == PROT_WRITE) && !(pte & PG_RW))
+			return (EPERM);
+
+		if ((vcpu->vc_exit.cpl > 0) && !(pte & PG_u))
+			return (EPERM);
+
+		pte = pte | PG_U;
+		if (mode == PROT_WRITE)
+			pte = pte | PG_M;
+		*hva = pte;
+
+		/* XXX: EINVAL if in 32bit and  PG_PS is 1 but CR4.PSE is 0 */
+		if (pte & PG_PS)
+			break;
+
 		if (level > 1) {
 			pt_paddr = pte & PG_FRAME;
 			shift -= shift_width;
@@ -4079,7 +4098,6 @@ vmm_translate_gva(struct vcpu *vcpu, uint64_t va, uint64_t *pa, int mode)
 	    va, *pa);
 
 	return (0);
-
 }
 
 
