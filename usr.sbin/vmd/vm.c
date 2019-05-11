@@ -1994,19 +1994,20 @@ translate_gva(struct vm_exit* exit, uint64_t va, uint64_t* pa, int mode)
 		return (EINVAL);
 
 	if (!(vrs->vrs_crs[VCPU_REGS_CR0] & CR0_PG)) {
-		log_debug("%s: unpaged, va=pa=0x%llx\n", __func__, va);
+		log_debug("%s: unpaged, va=pa=0x%llx", __func__, va);
 		*pa = va;
 		return (0);
 	}
 
 	pt_paddr = vrs->vrs_crs[VCPU_REGS_CR3];
 
-	log_debug("%s: guest %%cr0=0x%llx, %%cr3=0x%llx\n", __func__,
+	log_debug("%s: guest %%cr0=0x%llx, %%cr3=0x%llx", __func__,
 	    vrs->vrs_crs[VCPU_REGS_CR0], vrs->vrs_crs[VCPU_REGS_CR3]);
 
 	if (vrs->vrs_crs[VCPU_REGS_CR0] & CR0_PE) {
 		if (vrs->vrs_crs[VCPU_REGS_CR4] & CR4_PAE) {
 			pte_size = sizeof(uint64_t);
+			shift_width = 9;
 
 			if (vrs->vrs_msrs[VCPU_REGS_EFER] & EFER_LMA) {
 				/* 4 level paging */
@@ -2034,14 +2035,14 @@ translate_gva(struct vm_exit* exit, uint64_t va, uint64_t* pa, int mode)
 		pdidx = (va & mask) >> shift;
 		pte_paddr = (pt_paddr) + (pdidx * pte_size);
 
-		log_debug("%s: read pte level %d @ GPA 0x%llx\n", __func__,
+		log_debug("%s: read pte level %d @ GPA 0x%llx", __func__,
 		    level, pte_paddr);
 		if (read_mem(pte_paddr, &pte, pte_size)) {
 			log_warn("%s: failed to read pte", __func__);
 			return (EFAULT);
 		}
 
-		log_debug("%s: PTE @ 0x%llx = 0x%llx\n", __func__, pte_paddr,
+		log_debug("%s: PTE @ 0x%llx = 0x%llx", __func__, pte_paddr,
 		    pte);
 
 		/* XXX: Set CR2  */
