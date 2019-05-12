@@ -3986,8 +3986,6 @@ vmm_translate_gva(struct vcpu *vcpu, uint64_t va, uint64_t *pa, int mode)
 	struct vcpu_reg_state vrs;
 
 	level = 0;
-	pte = 0;
-	shift_width = 9;
 
 	if (vmm_softc->mode == VMM_MODE_EPT ||
 	    vmm_softc->mode == VMM_MODE_VMX) {
@@ -4014,6 +4012,7 @@ vmm_translate_gva(struct vcpu *vcpu, uint64_t va, uint64_t *pa, int mode)
 	if (vrs.vrs_crs[VCPU_REGS_CR0] & CR0_PE) {
 		if (vrs.vrs_crs[VCPU_REGS_CR4] & CR4_PAE) {
 			pte_size = sizeof(uint64_t);
+			shift_width = 9;
 
 			if (vrs.vrs_msrs[VCPU_REGS_EFER] & EFER_LMA) {
 				level = 4;
