@@ -2031,6 +2031,8 @@ translate_gva(struct vm_exit* exit, uint64_t va, uint64_t* pa, int mode)
 	} else
 		return (EINVAL);
 
+	/* XXX: Check for R bit in segment selector and set A bit */
+
 	for (;level > 0; level--) {
 		pdidx = (va & mask) >> shift;
 		pte_paddr = (pt_paddr) + (pdidx * pte_size);

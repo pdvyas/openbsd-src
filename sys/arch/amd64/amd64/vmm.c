@@ -3989,7 +3989,7 @@ vmm_translate_gva(struct vcpu *vcpu, uint64_t va, uint64_t *pa, int mode)
 
 	if (vmm_softc->mode == VMM_MODE_EPT ||
 	    vmm_softc->mode == VMM_MODE_VMX) {
-		if (vcpu_readregs_vmx(vcpu, VM_RWREGS_ALL, &vrs)) 
+		if (vcpu_readregs_vmx(vcpu, VM_RWREGS_ALL, &vrs))
 			return (EINVAL);
 	} else if (vmm_softc->mode == VMM_MODE_RVI ||
 	    vmm_softc->mode == VMM_MODE_SVM) {
@@ -4038,6 +4038,8 @@ vmm_translate_gva(struct vcpu *vcpu, uint64_t va, uint64_t *pa, int mode)
 	    "shift_width=%lld\n", __func__, pte_size, level, mask, shift,
 	    shift_width);
 
+	/* XXX: Check for R bit in segment selector and set A bit */
+
 	for (;level > 0; level--) {
 		pdidx = (va & mask) >> shift;
 		pte_paddr = (pt_paddr) + (pdidx * pte_size);
@@ -4060,7 +4062,8 @@ vmm_translate_gva(struct vcpu *vcpu, uint64_t va, uint64_t *pa, int mode)
 		else
 			pte = *(uint32_t *)hva;
 
-		DPRINTF("%s: PTE @ 0x%llx = 0x%llx\n", __func__, pte_paddr, pte);
+		DPRINTF("%s: PTE @ 0x%llx = 0x%llx\n", __func__, pte_paddr,
+		    pte);
 
 		/* XXX: Set CR2  */
 		if (!(pte & PG_V))
