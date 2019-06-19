@@ -368,7 +368,7 @@ start_vm(struct vmd_vm *vm, int fd)
 		mc146818_start();
 		restore_mem(vm->vm_receive_fd, vcp);
 		if (restore_vmm_params(vm->vm_receive_fd, vcp))
-			fatal("restore vmm params failed");
+			fatal("restore vm params failed");
 	}
 
 	if (vmm_pipe(vm, fd, vm_dispatch_vmm) == -1)
