@@ -90,7 +90,7 @@ int dump_vmr(int , struct vm_mem_range *);
 int dump_mem(int, struct vm_create_params *);
 void restore_vmr(int, struct vm_mem_range *);
 void restore_mem(int, struct vm_create_params *);
-int restore_vmm_params(int, struct vm_create_params *);
+int restore_vm_params(int, struct vm_create_params *);
 void pause_vm(struct vm_create_params *);
 void unpause_vm(struct vm_create_params *);
 
@@ -367,7 +367,7 @@ start_vm(struct vmd_vm *vm, int fd)
 		    vm->vm_disks, vm->vm_cdrom);
 		mc146818_start();
 		restore_mem(vm->vm_receive_fd, vcp);
-		if (restore_vmm_params(vm->vm_receive_fd, vcp))
+		if (restore_vm_params(vm->vm_receive_fd, vcp))
 			fatal("restore vm params failed");
 	}
 
@@ -661,7 +661,7 @@ dump_mem(int fd, struct vm_create_params *vcp)
 }
 
 int
-restore_vmm_params(int fd, struct vm_create_params *vcp) {
+restore_vm_params(int fd, struct vm_create_params *vcp) {
 	unsigned int			i;
 	struct vm_rwvmparams_params    vpp;
 
