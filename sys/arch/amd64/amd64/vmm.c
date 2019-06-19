@@ -677,7 +677,7 @@ vm_intr_pending(struct vm_intr_params *vip)
 
 	return (0);
 }
- 
+
 /*
  * vm_rwvmparams
  *
@@ -690,7 +690,7 @@ vm_intr_pending(struct vm_intr_params *vip)
  *
  * Return values:
  *  0: if successful
- *  ENOENT: if the VM/VCPU defined by 'vgp' cannot be found
+ *  ENOENT: if the VM/VCPU defined by 'vpp' cannot be found
  *  EINVAL: if an error occured reading the registers of the guest
  */
 int

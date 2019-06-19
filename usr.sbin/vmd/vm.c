@@ -586,7 +586,7 @@ send_vm(int fd, struct vm_create_params *vcp)
 		sz = atomicio(vwrite, fd, &vpp,
 		    sizeof(struct vm_rwvmparams_params));
 		if (sz != sizeof(struct vm_rwvmparams_params)) {
-			log_warn("%s: dumping vmm params failed", __func__);
+			log_warn("%s: dumping vm params failed", __func__);
 			ret = -1;
 			goto err;
 		}
