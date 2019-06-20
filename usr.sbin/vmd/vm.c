@@ -579,7 +579,7 @@ send_vm(int fd, struct vm_create_params *vcp)
 	for (i = 0; i < vcp->vcp_ncpus; i++) {
 		vpp.vpp_vcpu_id = i;
 		if ((ret = ioctl(env->vmd_fd, VMM_IOC_READVMPARAMS, &vpp))) {
-			log_warn("%s: readregs failed", __func__);
+			log_warn("%s: readvmparams failed", __func__);
 			goto err;
 		}
 
