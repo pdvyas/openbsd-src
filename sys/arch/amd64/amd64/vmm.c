@@ -685,7 +685,7 @@ vm_intr_pending(struct vm_intr_params *vip)
  * version, etc.
  *
  * Parameters:
- *   vrwp: Describes the VM and VCPU to get/set the tsc info from.
+ *   vrwp: Describes the VM and VCPU to get/set the params from
  *   dir: 0 for reading, 1 for writing
  *
  * Return values:
