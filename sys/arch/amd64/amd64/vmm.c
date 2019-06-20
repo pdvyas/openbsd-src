@@ -681,8 +681,8 @@ vm_intr_pending(struct vm_intr_params *vip)
 /*
  * vm_rwvmparams
  *
- * IOCTL handler to read/write the current vmm params like tsc value and
- * tsc frequency of a guest VCPU.
+ * IOCTL handler to read/write the current vmm params like pvclock gpa, pvclock
+ * version, etc.
  *
  * Parameters:
  *   vrwp: Describes the VM and VCPU to get/set the tsc info from.
@@ -698,7 +698,6 @@ vm_rwvmparams(struct vm_rwvmparams_params *vpp, int dir) {
 	struct vm *vm;
 	struct vcpu *vcpu;
 	int error;
-	extern uint64_t tsc_frequency;
 
 	/* Find the desired VM */
 	rw_enter_read(&vmm_softc->vm_lock);
