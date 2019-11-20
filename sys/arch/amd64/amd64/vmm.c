@@ -6513,9 +6513,8 @@ vmm_handle_cpuid(struct vcpu *vcpu)
 		*rdx = *((uint32_t *)&vmm_hv_signature[8]);
 		break;
 	case 0x40000001:	/* KVM hypervisor features */
-		*rax = (1 << KVM_FEATURE_CLOCKSOURCE2);
-		if (tsc_is_invariant)
-			*rax |= (1 << KVM_FEATURE_CLOCKSOURCE_STABLE_BIT);
+		*rax = (1 << KVM_FEATURE_CLOCKSOURCE2) |
+		    (1 << KVM_FEATURE_CLOCKSOURCE_STABLE_BIT);
 		*rbx = 0;
 		*rcx = 0;
 		*rdx = 0;
