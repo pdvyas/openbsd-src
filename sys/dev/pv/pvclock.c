@@ -29,10 +29,13 @@
 #include <sys/atomic.h>
 
 #include <machine/cpu.h>
+#include <machine/atomic.h>
 #include <uvm/uvm_extern.h>
 
 #include <dev/pv/pvvar.h>
 #include <dev/pv/pvreg.h>
+
+uint pvclock_lastcount;
 
 struct pvclock_softc {
 	struct device		 sc_dev;
@@ -153,6 +156,8 @@ pvclock_attach(struct device *parent, struct device *self, void *aux)
 	sc->sc_tc->tc_frequency = 1000000000ULL;
 	sc->sc_tc->tc_priv = sc;
 
+	pvclock_lastcount = 0;
+
 	/* Better than HPET but below TSC */
 	sc->sc_tc->tc_quality = 1500;
 
@@ -230,6 +235,14 @@ pvclock_get_timecount(struct timecounter *tc)
 	else
 		delta <<= shift;
 	ctr = ((delta * mul_frac) >> 32) + system_time;
+
+	if ((flags & PVCLOCK_FLAG_TSC_STABLE) != 0)
+		return (ctr);
+
+	if (ctr < pvclock_lastcount)
+		return (pvclock_lastcount);
+
+	atomic_swap_uint(&pvclock_lastcount, ctr);
 
 	return (ctr);
 }
