@@ -221,10 +221,6 @@ pvclock_get_timecount(struct timecounter *tc)
 		flags = ti->ti_flags;
 	} while (!pvclock_read_done(ti, version));
 
-	/* This bit must be set as we attached based on the stable flag */
-	if ((flags & PVCLOCK_FLAG_TSC_STABLE) == 0)
-		panic("%s: unstable result on stable clock", DEVNAME(sc));
-
 	/*
 	 * The algorithm is described in
 	 * linux/Documentation/virtual/kvm/msr.txt
