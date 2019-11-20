@@ -28,7 +28,6 @@
 #include <sys/rwlock.h>
 #include <sys/pledge.h>
 #include <sys/memrange.h>
-#include <sys/timetc.h>
 
 #include <uvm/uvm_extern.h>
 
@@ -6514,8 +6513,9 @@ vmm_handle_cpuid(struct vcpu *vcpu)
 		*rdx = *((uint32_t *)&vmm_hv_signature[8]);
 		break;
 	case 0x40000001:	/* KVM hypervisor features */
-		*rax = (1 << KVM_FEATURE_CLOCKSOURCE2) |
-		    (1 << KVM_FEATURE_CLOCKSOURCE_STABLE_BIT);
+		*rax = (1 << KVM_FEATURE_CLOCKSOURCE2);
+		if (tsc_is_invariant)
+			*rax |= (1 << KVM_FEATURE_CLOCKSOURCE_STABLE_BIT);
 		*rbx = 0;
 		*rcx = 0;
 		*rdx = 0;
@@ -6879,8 +6879,11 @@ void
 vmm_init_pvclock(struct vcpu *vcpu, paddr_t gpa)
 {
 	vcpu->vc_pvclock_system_gpa = gpa;
-	vcpu->vc_pvclock_system_tsc_mul =
-	    (int) ((1000000000L << 20) / tc_getfrequency());
+	if (tsc_frequency > 0)
+		vcpu->vc_pvclock_system_tsc_mul =
+		    (int) ((1000000000L << 20) / tsc_frequency);
+	else
+		vcpu->vc_pvclock_system_tsc_mul = 0;
 	vmm_update_pvclock(vcpu);
 }
 
@@ -6906,10 +6909,13 @@ vmm_update_pvclock(struct vcpu *vcpu)
 		nanotime(&tv);
 		pvclock_ti->ti_system_time =
 		    tv.tv_sec * 1000000000L + tv.tv_nsec;
-		pvclock_ti->ti_tsc_shift = -20;
+		pvclock_ti->ti_tsc_shift = 12;
 		pvclock_ti->ti_tsc_to_system_mul =
 		    vcpu->vc_pvclock_system_tsc_mul;
-		pvclock_ti->ti_flags = PVCLOCK_FLAG_TSC_STABLE;
+		if (tsc_is_invariant)
+			pvclock_ti->ti_flags = PVCLOCK_FLAG_TSC_STABLE;
+		else
+			pvclock_ti->ti_flags = 0;
 
 		/* END (must be even) */
 		pvclock_ti->ti_version &= ~0x1;
