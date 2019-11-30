@@ -318,3 +318,5 @@ int vioscsi_io(int, uint16_t, uint32_t *, uint8_t *, void *, uint8_t);
 void vioscsi_update_qs(struct vioscsi_dev *);
 void vioscsi_update_qa(struct vioscsi_dev *);
 int vioscsi_notifyq(struct vioscsi_dev *);
+void virtio_stop(struct vm_create_params *vcp);
+void virtio_start(struct vm_create_params *vcp);
