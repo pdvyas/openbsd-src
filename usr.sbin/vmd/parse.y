@@ -218,7 +218,7 @@ main		: LOCAL INET6 {
 			env->vmd_ps.ps_csock.cs_uid = $3.uid;
 			env->vmd_ps.ps_csock.cs_gid = $3.gid == -1 ? 0 : $3.gid;
 		}
-		| STAGGERED START PARALLEL NUMBER DELAY NUMBER{
+		| STAGGERED START PARALLEL NUMBER DELAY NUMBER {
 			env->vmd_cfg.cfg_flags |= VMD_CFG_STAGGERED_START;
 			env->vmd_cfg.delay.tv_sec = $6;
 			env->vmd_cfg.parallelism = $4;
