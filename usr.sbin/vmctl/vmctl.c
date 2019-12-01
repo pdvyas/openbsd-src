@@ -716,6 +716,8 @@ vm_state(unsigned int mask)
 {
 	if (mask & VM_STATE_PAUSED)
 		return "paused";
+	else if (mask & VM_STATE_WAITING)
+		return "waiting";
 	else if (mask & VM_STATE_RUNNING)
 		return "running";
 	else if (mask & VM_STATE_SHUTDOWN)

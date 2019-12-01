@@ -63,6 +63,7 @@ int	 vm_instance(struct privsep *, struct vmd_vm **,
 	    struct vmop_create_params *, uid_t);
 int	 vm_checkinsflag(struct vmop_create_params *, unsigned int, uid_t);
 int	 vm_claimid(const char *, int, uint32_t *);
+void	 start_vm_batch(int, short, void*);
 
 struct vmd	*env;
 
@@ -72,6 +73,8 @@ static struct privsep_proc procs[] = {
 	{ "control",	PROC_CONTROL,	vmd_dispatch_control, control },
 	{ "vmm",	PROC_VMM,	vmd_dispatch_vmm, vmm, vmm_shutdown },
 };
+
+struct event stagger_start_timer;
 
 /* For the privileged process */
 static struct privsep_proc *proc_priv = &procs[0];
@@ -854,6 +857,31 @@ main(int argc, char **argv)
 	return (0);
 }
 
+void
+start_vm_batch(int fd, short type, void *args)
+{
+	int i=0;
+	struct vmd_vm		*vm, *next_vm;
+	log_debug("PD: STARTING BATCH -------");
+	TAILQ_FOREACH(vm, env->vmd_vms, vm_entry) {
+		if (!(vm->vm_state & VM_STATE_WAITING)) {
+			log_debug("%s: not creating vm %s (disabled)",
+			    __func__,
+			    vm->vm_params.vmc_params.vcp_name);
+			continue;
+		}
+		i++;
+		if (i>env->vmd_cfg.parallelism) {
+			evtimer_add(&stagger_start_timer, &env->vmd_cfg.delay);
+			break;
+		}
+		log_debug("FOREACH: vm %d", vm->vm_vmid);
+		vm->vm_state &= ~VM_STATE_WAITING;
+		config_setvm(&env->vmd_ps, vm, -1, vm->vm_params.vmc_owner.uid);
+	}
+	log_debug("PD: done starting vms");
+}
+
 int
 vmd_configure(void)
 {
@@ -891,6 +919,8 @@ vmd_configure(void)
 		exit(0);
 	}
 
+	log_debug("vmd_configure: %llx", env);
+
 	/* Send shared global configuration to all children */
 	if (config_setconfig(env) == -1)
 		return (-1);
@@ -913,10 +943,24 @@ vmd_configure(void)
 			    vm->vm_params.vmc_params.vcp_name);
 			continue;
 		}
+		if (vm->vm_state & VM_STATE_WAITING) {
+			log_debug("%s: not creating vm %s (waiting)",
+			    __func__,
+			    vm->vm_params.vmc_params.vcp_name);
+			continue;
+		}
 		if (config_setvm(&env->vmd_ps, vm,
 		    -1, vm->vm_params.vmc_owner.uid) == -1)
 			return (-1);
 	}
+
+	evtimer_set(&stagger_start_timer, start_vm_batch, NULL);
+	start_vm_batch(0, 0, NULL);
+
+	log_debug("PD: delay: %d", env->vmd_cfg.delay);
+	log_debug("PD: parallelism: %d", env->vmd_cfg.parallelism);
+	log_debug("PD: cfg: %llx", &env->vmd_cfg);
+	log_debug("PD: env: %llx", env);
 
 	return (0);
 }

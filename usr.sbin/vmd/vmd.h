@@ -280,6 +280,7 @@ struct vmd_vm {
 #define VM_STATE_SHUTDOWN	0x04
 #define VM_STATE_RECEIVED	0x08
 #define VM_STATE_PAUSED		0x10
+#define VM_STATE_WAITING	0x20
 
 	/* For rate-limiting */
 	struct timeval		 vm_start_tv;
@@ -319,7 +320,10 @@ struct vmd_config {
 	unsigned int		 cfg_flags;
 #define VMD_CFG_INET6		0x01
 #define VMD_CFG_AUTOINET6	0x02
+#define VMD_CFG_STAGGERED_START	0x04
 
+	struct timeval		 delay;
+	int			 parallelism;
 	struct address		 cfg_localprefix;
 	struct address		 cfg_localprefix6;
 };
