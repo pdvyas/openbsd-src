@@ -91,6 +91,12 @@ vm "vm1.example.com" {
 .Sh GLOBAL CONFIGURATION
 The following setting can be configured globally:
 .Bl -tag -width Ds
+.It Ic staggered start parallel Ar parallelism Ic delay Ar seconds
+Start all configured vms in staggered fashion with
+.Ar parallelism
+instances in parallel every
+.Ar delay
+seconds.
 .It Ic local prefix Ar address Ns Li / Ns Ar prefix
 Set the network prefix that is used to allocate subnets for
 local interfaces, see
