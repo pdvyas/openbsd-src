@@ -122,7 +122,7 @@ typedef struct {
 %token	INCLUDE ERROR
 %token	ADD ALLOW BOOT CDROM DEVICE DISABLE DISK DOWN ENABLE FORMAT GROUP
 %token	INET6 INSTANCE INTERFACE LLADDR LOCAL LOCKED MEMORY NET NIFS OWNER
-%token	PATH PREFIX RDOMAIN SIZE SOCKET SWITCH UP VM VMID STAGGERED START
+%token	PATH PREFIX RDOMAIN SIZE SOCKET SWITCH UP VM VMID
 %token	<v.number>	NUMBER
 %token	<v.string>	STRING
 %type	<v.lladdr>	lladdr
@@ -373,7 +373,7 @@ vm		: VM string vm_instance		{
 				} else {
 					if (vcp_disable)
 						vm->vm_state |= VM_STATE_DISABLED;
-					else if(1)
+					else if(env->vmd_cfg.cfg_flags & VMD_CFG_STAGGERED_START)
 						vm->vm_state |= VM_STATE_WAITING;
 					log_debug("%s:%d: vm \"%s\" "
 					    "registered (%s)",
