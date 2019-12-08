@@ -374,8 +374,7 @@ vm		: VM string vm_instance		{
 				} else {
 					if (vcp_disable)
 						vm->vm_state |= VM_STATE_DISABLED;
-					else if(env->vmd_cfg.cfg_flags &
-						    VMD_CFG_STAGGERED_START)
+					else
 						vm->vm_state |= VM_STATE_WAITING;
 					log_debug("%s:%d: vm \"%s\" "
 					    "registered (%s)",

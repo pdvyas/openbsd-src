@@ -56,6 +56,8 @@
 #define VMD_SWITCH_TYPE		"bridge"
 #define VM_DEFAULT_MEMORY	512
 
+#define VMD_DEFAULT_STAGGERED_START_DELAY 30
+
 /* Rate-limit fast reboots */
 #define VM_START_RATE_SEC	6	/* min. seconds since last reboot */
 #define VM_START_RATE_LIMIT	3	/* max. number of fast reboots */

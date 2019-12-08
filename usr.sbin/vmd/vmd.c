@@ -21,8 +21,10 @@
 #include <sys/wait.h>
 #include <sys/cdefs.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <sys/tty.h>
 #include <sys/ttycom.h>
+#include <sys/types.h>
 #include <sys/ioctl.h>
 
 #include <stdio.h>
@@ -887,8 +889,10 @@ start_vm_batch(int fd, short type, void *args)
 int
 vmd_configure(void)
 {
-	struct vmd_vm		*vm;
+	int			ncpus;
 	struct vmd_switch	*vsw;
+	int ncpu_mib[] = {CTL_HW, HW_NCPU};
+	size_t ncpus_sz = sizeof(ncpus);
 
 	if ((env->vmd_ptmfd = open(PATH_PTMDEV, O_RDWR|O_CLOEXEC)) == -1)
 		fatal("open %s", PATH_PTMDEV);
@@ -936,30 +940,21 @@ vmd_configure(void)
 		}
 	}
 
-	TAILQ_FOREACH(vm, env->vmd_vms, vm_entry) {
-		if (vm->vm_state & VM_STATE_DISABLED) {
-			log_debug("%s: not creating vm %s (disabled)",
-			    __func__,
-			    vm->vm_params.vmc_params.vcp_name);
-			continue;
-		}
-		if (vm->vm_state & VM_STATE_WAITING) {
-			log_debug("%s: not creating vm %s (waiting)",
-			    __func__,
-			    vm->vm_params.vmc_params.vcp_name);
-			continue;
-		}
-		if (config_setvm(&env->vmd_ps, vm,
-		    -1, vm->vm_params.vmc_owner.uid) == -1)
-			return (-1);
+	if (!(env->vmd_cfg.cfg_flags & VMD_CFG_STAGGERED_START)) {
+		env->vmd_cfg.delay.tv_sec = VMD_DEFAULT_STAGGERED_START_DELAY;
+		if (sysctl(ncpu_mib, 2, &ncpus, &ncpus_sz, NULL, 0) == -1)
+			ncpus = 1;
+		env->vmd_cfg.parallelism = ncpus;
+		log_debug("%s: setting staggered start configuration to "
+		    "parallelism: %d and delay: %lld",
+		    __func__, ncpus, env->vmd_cfg.delay.tv_sec);
+
 	}
 
-	if (env->vmd_cfg.cfg_flags & VMD_CFG_STAGGERED_START) {
-		log_debug("%s: starting vms in staggered fashion", __func__);
-		evtimer_set(&staggered_start_timer, start_vm_batch, NULL);
-		/* start first batch */
-		start_vm_batch(0, 0, NULL);
-	}
+	log_debug("%s: starting vms in staggered fashion", __func__);
+	evtimer_set(&staggered_start_timer, start_vm_batch, NULL);
+	/* start first batch */
+	start_vm_batch(0, 0, NULL);
 
 	return (0);
 }
