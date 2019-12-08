@@ -273,22 +273,23 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 		}
 		strlcpy(vmc.vmc_params.vcp_name, vid.vid_name,
 		    sizeof(vmc.vmc_params.vcp_name));
-		vmc.vmc_params.vcp_id = 0;
+		clean_vmc(&vmc);
 
 		ret = vm_register(ps, &vmc, &vm, 0, vmc.vmc_owner.uid);
-		if (ret != 0) {
-			res = errno;
-			cmd = IMSG_VMDOP_START_VM_RESPONSE;
-			close(imsg->fd);
-		} else {
-			vm->vm_state |= VM_STATE_RECEIVED;
-			config_setvm(ps, vm, imsg->hdr.peerid,
-			    vmc.vmc_owner.uid);
-			log_debug("%s: sending fd to vmm", __func__);
-			proc_compose_imsg(ps, PROC_VMM, -1,
-			    IMSG_VMDOP_RECEIVE_VM_END, vm->vm_vmid, imsg->fd,
-			    NULL, 0);
+		if (ret == -1) {
+			if ((vm = vm_getbyname(vmc.vmc_params.vcp_name)) == NULL) {
+				res = ENOENT;
+			}
+			vm->vm_params = vmc;
 		}
+		vm->vm_state |= VM_STATE_RECEIVED;
+		config_setvm(ps, vm, imsg->hdr.peerid,
+		    vmc.vmc_owner.uid);
+		log_info("--- vmd nemmranges: %zu", vmc.vmc_params.vcp_nmemranges);
+		log_debug("%s: sending fd to vmm", __func__);
+		proc_compose_imsg(ps, PROC_VMM, -1,
+		    IMSG_VMDOP_RECEIVE_VM_END, vm->vm_vmid, imsg->fd,
+		    NULL, 0);
 		break;
 	case IMSG_VMDOP_DONE:
 		control_reset(&ps->ps_csock);
@@ -1968,6 +1969,18 @@ prefixlen2mask(uint8_t prefixlen)
 		prefixlen = 32;
 
 	return (htonl(0xffffffff << (32 - prefixlen)));
+}
+
+void
+clean_vmc(struct vmop_create_params *vmc)
+{
+	vmc->vmc_owner.uid = 0;
+	vmc->vmc_owner.gid = -1;
+	vmc->vmc_owner.uid = 0;
+	vmc->vmc_owner.gid = -1;
+	vmc->vmc_params.vcp_id = 0;
+	/* we need a non zero vmc_flags for vm_register to register a new vm */
+	vmc->vmc_flags = VMOP_CREATE_MEMORY;
 }
 
 void

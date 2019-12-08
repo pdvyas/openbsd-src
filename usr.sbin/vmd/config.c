@@ -480,10 +480,12 @@ config_setvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, uid_t uid)
 	}
 
 	/* Send VM information */
-	if (vm->vm_state & VM_STATE_RECEIVED)
+	if (vm->vm_state & VM_STATE_RECEIVED) {
 		proc_compose_imsg(ps, PROC_VMM, -1,
 		    IMSG_VMDOP_RECEIVE_VM_REQUEST, vm->vm_vmid, fd,  vmc,
 		    sizeof(struct vmop_create_params));
+		log_info("--- config nemmranges: %zu", vmc->vmc_params.vcp_nmemranges);
+	}
 	else
 		proc_compose_imsg(ps, PROC_VMM, -1,
 		    IMSG_VMDOP_START_VM_REQUEST, vm->vm_vmid, kernfd,

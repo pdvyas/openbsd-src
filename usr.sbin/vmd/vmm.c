@@ -314,6 +314,7 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		memcpy(&vmc, imsg->data, sizeof(vmc));
 		ret = vm_register(ps, &vmc, &vm,
 		    imsg->hdr.peerid, vmc.vmc_owner.uid);
+		log_info("--- vmm nemmranges: %zu", vmc.vmc_params.vcp_nmemranges);
 		vm->vm_tty = imsg->fd;
 		vm->vm_state |= VM_STATE_RECEIVED;
 		break;

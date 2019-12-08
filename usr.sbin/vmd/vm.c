@@ -509,7 +509,6 @@ send_vm(int fd, struct vm_create_params *vcp)
 	struct vm_rwvmparams_params vpp;
 	struct vmop_create_params *vmc;
 	struct vm_terminate_params vtp;
-	unsigned int		   flags = 0;
 	unsigned int		   i;
 	int			   ret = 0;
 	size_t			   sz;
@@ -528,10 +527,9 @@ send_vm(int fd, struct vm_create_params *vcp)
 		goto err;
 	}
 
-	flags |= VMOP_CREATE_MEMORY;
-	memcpy(&vmc->vmc_params, &current_vm->vm_params, sizeof(struct
+	memcpy(vmc, &current_vm->vm_params, sizeof(struct
 	    vmop_create_params));
-	vmc->vmc_flags = flags;
+	clean_vmc(vmc);
 	vrp.vrwp_vm_id = vcp->vcp_id;
 	vrp.vrwp_mask = VM_RWREGS_ALL;
 	vpp.vpp_mask = VM_RWVMPARAMS_ALL;
@@ -929,6 +927,8 @@ vmm_create_vm(struct vm_create_params *vcp)
 	if (vcp->vcp_ncpus > VMM_MAX_VCPUS_PER_VM)
 		return (EINVAL);
 
+
+	log_info("--- nemmranges: %zu", vcp->vcp_nmemranges);
 	if (vcp->vcp_nmemranges == 0 ||
 	    vcp->vcp_nmemranges > VMM_MAX_MEM_RANGES)
 		return (EINVAL);
