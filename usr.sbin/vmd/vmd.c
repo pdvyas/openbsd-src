@@ -24,7 +24,6 @@
 #include <sys/sysctl.h>
 #include <sys/tty.h>
 #include <sys/ttycom.h>
-#include <sys/types.h>
 #include <sys/ioctl.h>
 
 #include <stdio.h>
