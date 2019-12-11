@@ -863,11 +863,12 @@ start_vm_batch(int fd, short type, void *args)
 {
 	int		i = 0;
 	struct vmd_vm	*vm;
+
 	log_debug("%s: starting batch of %d vms", __func__,
 	    env->vmd_cfg.parallelism);
 	TAILQ_FOREACH(vm, env->vmd_vms, vm_entry) {
 		if (!(vm->vm_state & VM_STATE_WAITING)) {
-			log_debug("%s: not creating vm %s (disabled)",
+			log_debug("%s: not starting vm %s (disabled)",
 			    __func__,
 			    vm->vm_params.vmc_params.vcp_name);
 			continue;
@@ -879,8 +880,7 @@ start_vm_batch(int fd, short type, void *args)
 			break;
 		}
 		vm->vm_state &= ~VM_STATE_WAITING;
-		config_setvm(&env->vmd_ps, vm, -1,
-		    vm->vm_params.vmc_owner.uid);
+		config_setvm(&env->vmd_ps, vm, -1, vm->vm_params.vmc_owner.uid);
 	}
 	log_debug("%s: done starting vms", __func__);
 }
@@ -890,7 +890,7 @@ vmd_configure(void)
 {
 	int			ncpus;
 	struct vmd_switch	*vsw;
-	int ncpu_mib[] = {CTL_HW, HW_NCPU};
+	int ncpu_mib[] = {CTL_HW, HW_NCPUONLINE};
 	size_t ncpus_sz = sizeof(ncpus);
 
 	if ((env->vmd_ptmfd = open(PATH_PTMDEV, O_RDWR|O_CLOEXEC)) == -1)
@@ -941,13 +941,12 @@ vmd_configure(void)
 
 	if (!(env->vmd_cfg.cfg_flags & VMD_CFG_STAGGERED_START)) {
 		env->vmd_cfg.delay.tv_sec = VMD_DEFAULT_STAGGERED_START_DELAY;
-		if (sysctl(ncpu_mib, 2, &ncpus, &ncpus_sz, NULL, 0) == -1)
+		if (sysctl(ncpu_mib, NELEM(ncpu_mib), &ncpus, &ncpus_sz, NULL, 0) == -1)
 			ncpus = 1;
 		env->vmd_cfg.parallelism = ncpus;
 		log_debug("%s: setting staggered start configuration to "
 		    "parallelism: %d and delay: %lld",
-		    __func__, ncpus, env->vmd_cfg.delay.tv_sec);
-
+		    __func__, ncpus, (long long) env->vmd_cfg.delay.tv_sec);
 	}
 
 	log_debug("%s: starting vms in staggered fashion", __func__);
@@ -1020,24 +1019,12 @@ vmd_reload(unsigned int reset, const char *filename)
 			}
 		}
 
-		TAILQ_FOREACH(vm, env->vmd_vms, vm_entry) {
-			if (!(vm->vm_state & VM_STATE_RUNNING)) {
-				if (vm->vm_state & VM_STATE_DISABLED) {
-					log_debug("%s: not creating vm %s"
-					    " (disabled)", __func__,
-					    vm->vm_params.vmc_params.vcp_name);
-					continue;
-				}
-				if (config_setvm(&env->vmd_ps, vm,
-				    -1, vm->vm_params.vmc_owner.uid) == -1)
-					return (-1);
-			} else {
-				log_debug("%s: not creating vm \"%s\": "
-				    "(running)", __func__,
-				    vm->vm_params.vmc_params.vcp_name);
-			}
+		log_debug("%s: starting vms in staggered fashion", __func__);
+		evtimer_set(&staggered_start_timer, start_vm_batch, NULL);
+		/* start first batch */
+		start_vm_batch(0, 0, NULL);
+
 		}
-	}
 
 	return (0);
 }
