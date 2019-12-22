@@ -238,6 +238,12 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 			close(imsg->fd);
 			break;
 		}
+		if (vm_checkperm(vm, &vm->vm_params.vmc_owner,
+		    vid.vid_uid) != 0) {
+			res = EPERM;
+			cmd = IMSG_VMDOP_SEND_VM_RESPONSE;
+			break;
+		}
 		vmr.vmr_id = vid.vid_id;
 		log_debug("%s: sending fd to vmm", __func__);
 		proc_compose_imsg(ps, PROC_VMM, -1, imsg->hdr.type,
