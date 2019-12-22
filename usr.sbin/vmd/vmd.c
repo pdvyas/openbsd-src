@@ -277,7 +277,7 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 		}
 		strlcpy(vmc.vmc_params.vcp_name, vid.vid_name,
 		    sizeof(vmc.vmc_params.vcp_name));
-		vmc.vmc_params.vcp_id = 0;
+		clean_vmc(&vmc);
 
 		ret = vm_register(ps, &vmc, &vm, 0, vmc.vmc_owner.uid);
 		if (ret != 0) {
@@ -1992,6 +1992,18 @@ prefixlen2mask(uint8_t prefixlen)
 		prefixlen = 32;
 
 	return (htonl(0xffffffff << (32 - prefixlen)));
+}
+
+void
+clean_vmc(struct vmop_create_params *vmc)
+{
+	vmc->vmc_owner.uid = 0;
+	vmc->vmc_owner.gid = -1;
+	vmc->vmc_owner.uid = 0;
+	vmc->vmc_owner.gid = -1;
+	vmc->vmc_params.vcp_id = 0;
+	/* we need a non zero vmc_flags for vm_register to register a new vm */
+	vmc->vmc_flags = VMOP_CREATE_MEMORY;
 }
 
 void
