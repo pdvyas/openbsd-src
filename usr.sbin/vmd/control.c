@@ -346,6 +346,7 @@ control_dispatch_imsg(int fd, short event, void *arg)
 		case IMSG_VMDOP_START_VM_REQUEST:
 		case IMSG_VMDOP_PAUSE_VM:
 		case IMSG_VMDOP_UNPAUSE_VM:
+		case IMSG_VMDOP_SEND_VM_REQUEST:
 			break;
 		default:
 			if (c->peercred.uid != 0) {
@@ -378,7 +379,6 @@ control_dispatch_imsg(int fd, short event, void *arg)
 
 			/* FALLTHROUGH */
 		case IMSG_VMDOP_RECEIVE_VM_REQUEST:
-		case IMSG_VMDOP_SEND_VM_REQUEST:
 		case IMSG_VMDOP_LOAD:
 		case IMSG_VMDOP_RELOAD:
 		case IMSG_CTL_RESET:
@@ -402,13 +402,14 @@ control_dispatch_imsg(int fd, short event, void *arg)
 			break;
 		case IMSG_VMDOP_WAIT_VM_REQUEST:
 		case IMSG_VMDOP_TERMINATE_VM_REQUEST:
+		case IMSG_VMDOP_SEND_VM_REQUEST:
 			if (IMSG_DATA_SIZE(&imsg) < sizeof(vid))
 				goto fail;
 			memcpy(&vid, imsg.data, sizeof(vid));
 			vid.vid_uid = c->peercred.uid;
 
 			if (proc_compose_imsg(ps, PROC_PARENT, -1,
-			    imsg.hdr.type, fd, -1, &vid, sizeof(vid)) == -1) {
+			    imsg.hdr.type, fd, imsg.fd, &vid, sizeof(vid)) == -1) {
 				log_debug("%s: proc_compose_imsg failed",
 				    __func__);
 				control_close(fd, cs);
