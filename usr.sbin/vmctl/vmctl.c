@@ -781,7 +781,7 @@ print_vm_info(struct vmop_info_result *list, size_t ct)
 			(void)strlcpy(curmem, "-", sizeof(curmem));
 			(void)strlcpy(maxmem, "-", sizeof(maxmem));
 
-			(void)fmt_scaled(vir->vir_memory_size * 1024 * 1024,
+			(void)fmt_scaled(vir->vir_memory_size,
 			    maxmem);
 
 			if (running) {

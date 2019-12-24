@@ -1063,7 +1063,7 @@ vm_create_check_mem_ranges(struct vm_create_params *vcp)
 {
 	size_t i, memsize = 0;
 	struct vm_mem_range *vmr, *pvmr;
-	const paddr_t maxgpa = (uint64_t)VMM_MAX_VM_MEM_SIZE * 1024 * 1024;
+	const paddr_t maxgpa = (uint64_t)VMM_MAX_VM_MEM_SIZE;
 
 	if (vcp->vcp_nmemranges == 0 ||
 	    vcp->vcp_nmemranges > VMM_MAX_MEM_RANGES)
@@ -1123,7 +1123,6 @@ vm_create_check_mem_ranges(struct vm_create_params *vcp)
 
 	if (memsize % (1024 * 1024) != 0)
 		return (0);
-	memsize /= 1024 * 1024;
 	return (memsize);
 }
 

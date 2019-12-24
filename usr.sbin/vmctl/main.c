@@ -422,7 +422,7 @@ parse_size(struct parse_result *res, char *word)
 		warnx("size must be at least one megabyte");
 		return (-1);
 	} else
-		res->size = val / 1024 / 1024;
+		res->size = val;
 
 	if ((res->size * 1024 * 1024) != val)
 		warnx("size rounded to %lld megabytes", res->size);
