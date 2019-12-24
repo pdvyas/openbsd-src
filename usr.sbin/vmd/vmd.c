@@ -59,6 +59,7 @@ int	 vmd_control_run(void);
 int	 vmd_dispatch_control(int, struct privsep_proc *, struct imsg *);
 int	 vmd_dispatch_vmm(int, struct privsep_proc *, struct imsg *);
 int	 vmd_check_vmh(struct vm_dump_header *);
+int	 vm_compare_vcp(struct vm_create_params *, struct vm_create_params *);
 
 int	 vm_instance(struct privsep *, struct vmd_vm **,
 	    struct vmop_create_params *, uid_t);
@@ -286,11 +287,8 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 		clean_vmc(&vmc);
 
 		ret = vm_register(ps, &vmc, &vm, 0, vmc.vmc_owner.uid);
-		if (ret != 0) {
-			res = errno;
-			cmd = IMSG_VMDOP_START_VM_RESPONSE;
-			close(imsg->fd);
-		} else {
+
+		if (ret == 0) {
 			vm->vm_state |= VM_STATE_RECEIVED;
 			config_setvm(ps, vm, imsg->hdr.peerid,
 			    vmc.vmc_owner.uid);
@@ -298,6 +296,22 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 			proc_compose_imsg(ps, PROC_VMM, -1,
 			    IMSG_VMDOP_RECEIVE_VM_END, vm->vm_vmid, imsg->fd,
 			    NULL, 0);
+		} else if (ret == -1 && errno == EALREADY &&
+		   !(vm->vm_state & VM_STATE_RUNNING) &&
+		   !(vm_compare_vcp(&vm->vm_params.vmc_params,
+			&vmc.vmc_params))) {
+			vm->vm_params = vmc;
+			vm->vm_state |= VM_STATE_RECEIVED;
+			config_setvm(ps, vm, imsg->hdr.peerid,
+			    vmc.vmc_owner.uid);
+			log_debug("%s: sending fd to vmm", __func__);
+			proc_compose_imsg(ps, PROC_VMM, -1,
+			    IMSG_VMDOP_RECEIVE_VM_END, vm->vm_vmid, imsg->fd,
+			    NULL, 0);
+		} else {
+			res = errno;
+			cmd = IMSG_VMDOP_START_VM_RESPONSE;
+			close(imsg->fd);
 		}
 		break;
 	case IMSG_VMDOP_DONE:
@@ -548,6 +562,56 @@ vmd_dispatch_vmm(int fd, struct privsep_proc *p, struct imsg *imsg)
 		proc_forward_imsg(ps, imsg, PROC_CONTROL, -1);
 		break;
 	default:
+		return (-1);
+	}
+
+	return (0);
+}
+
+int
+vm_compare_vcp(struct vm_create_params *vcp1, struct vm_create_params *vcp2)
+{
+	size_t i, vcp1_mem, vcp2_mem;
+
+	if (vcp1->vcp_ncpus != vcp2->vcp_ncpus) {
+		log_debug("%s: ncpu mismatch", __func__);
+		return (-1);
+	}
+
+	if (vcp1->vcp_ndisks != vcp2->vcp_ndisks) {
+		log_debug("%s: ndisks mismatch", __func__);
+		return (-1);
+	}
+	if (memcmp(vcp1->vcp_disks, vcp2->vcp_disks,
+	    VMM_MAX_DISKS_PER_VM * VMM_MAX_PATH_DISK)) {
+		log_debug("%s: disks mismatch", __func__);
+		return (-1);
+	}
+
+	if (vcp1->vcp_nnics != vcp2->vcp_nnics) {
+		log_debug("%s: nnics mismatch", __func__);
+		return (-1);
+	}
+	if (memcmp(vcp1->vcp_macs, vcp2->vcp_macs, VMM_MAX_NICS_PER_VM * 6)) {
+		log_debug("%s: nics mismatch", __func__);
+		return (-1);
+	}
+
+	if (strncmp(vcp1->vcp_cdrom, vcp2->vcp_cdrom, VMM_MAX_PATH_CDROM)) {
+		log_debug("%s: cdrom ok", __func__);
+		return (-1);
+	}
+
+	vcp1_mem = 0;
+	for (i = 0; i < vcp1->vcp_nmemranges; i++)
+		vcp1_mem += vcp1->vcp_memranges[i].vmr_size;
+
+	vcp2_mem = 0;
+	for (i = 0; i < vcp2->vcp_nmemranges; i++)
+		vcp2_mem += vcp2->vcp_memranges[i].vmr_size;
+
+	if (vcp1_mem != vcp2_mem) {
+		log_debug("%s: mem size mismatch", __func__);
 		return (-1);
 	}
 
