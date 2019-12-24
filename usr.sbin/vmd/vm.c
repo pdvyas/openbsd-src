@@ -849,14 +849,13 @@ vcpu_reset(uint32_t vmid, uint32_t vcpu_id, struct vcpu_reg_state *vrs)
 void
 create_memory_map(struct vm_create_params *vcp)
 {
-	size_t len, mem_bytes, mem_mb;
+	size_t len, mem_bytes;
 
-	mem_mb = vcp->vcp_memranges[0].vmr_size;
+	mem_bytes = vcp->vcp_memranges[0].vmr_size;
+	log_info("membytes: %zu", mem_bytes);
 	vcp->vcp_nmemranges = 0;
-	if (mem_mb < 1 || mem_mb > VMM_MAX_VM_MEM_SIZE)
+	if (mem_bytes < 1 || mem_bytes > VMM_MAX_VM_MEM_SIZE)
 		return;
-
-	mem_bytes = mem_mb * 1024 * 1024;
 
 	/* First memory region: 0 - LOWMEM_KB (DOS low mem) */
 	len = LOWMEM_KB * 1024;
