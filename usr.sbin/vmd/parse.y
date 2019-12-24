@@ -509,6 +509,7 @@ vm_opts		: disable			{
 				YYERROR;
 			}
 			vcp->vcp_memranges[0].vmr_size = (size_t)res;
+			vcp->vcp_nmemranges = 1;
 			vmc.vmc_flags |= VMOP_CREATE_MEMORY;
 		}
 		| MEMORY STRING			{
@@ -524,6 +525,7 @@ vm_opts		: disable			{
 				YYERROR;
 			}
 			vcp->vcp_memranges[0].vmr_size = (size_t)res;
+			vcp->vcp_nmemranges = 1;
 			vmc.vmc_flags |= VMOP_CREATE_MEMORY;
 		}
 		| OWNER owner_id		{
@@ -1266,7 +1268,7 @@ parse_size(char *word, int64_t val)
 	if ((size * 1024 * 1024) != val)
 		log_warnx("size rounded to %zd megabytes", size);
 
-	return ((ssize_t)size);
+	return ((ssize_t)size * 1024 * 1024);
 }
 
 int

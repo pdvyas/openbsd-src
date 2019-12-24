@@ -55,7 +55,7 @@
 #define MAX_TAP			256
 #define NR_BACKLOG		5
 #define VMD_SWITCH_TYPE		"bridge"
-#define VM_DEFAULT_MEMORY	512
+#define VM_DEFAULT_MEMORY	(512L * 1024 * 1024)
 
 #define VMD_DEFAULT_STAGGERED_START_DELAY 30
 

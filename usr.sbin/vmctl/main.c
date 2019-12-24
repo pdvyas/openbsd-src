@@ -427,6 +427,8 @@ parse_size(struct parse_result *res, char *word)
 	if ((res->size * 1024 * 1024) != val)
 		warnx("size rounded to %lld megabytes", res->size);
 
+	res->size = val * 1024 * 1024;
+
 	return (0);
 }
 
