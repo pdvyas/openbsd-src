@@ -288,32 +288,24 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 
 		ret = vm_register(ps, &vmc, &vm, 0, vmc.vmc_owner.uid);
 
-		if (ret == 0) {
-			vm->vm_state |= VM_STATE_RECEIVED;
-			config_setvm(ps, vm, imsg->hdr.peerid,
-			    vmc.vmc_owner.uid);
-			log_debug("%s: sending fd to vmm", __func__);
-			proc_compose_imsg(ps, PROC_VMM, -1,
-			    IMSG_VMDOP_RECEIVE_VM_END, vm->vm_vmid, imsg->fd,
-			    NULL, 0);
-		} else if (ret == -1 && errno == EALREADY &&
+		if (ret == -1 && errno == EALREADY &&
 		   !(vm->vm_state & VM_STATE_RUNNING) &&
 		   !(vm_compare_vcp(&vm->vm_params.vmc_params,
 			&vmc.vmc_params))) {
 			vm->vm_params = vmc;
-			vm->vm_state |= VM_STATE_RECEIVED;
-			config_setvm(ps, vm, imsg->hdr.peerid,
-			    vmc.vmc_owner.uid);
-			log_debug("%s: sending fd to vmm", __func__);
-			proc_compose_imsg(ps, PROC_VMM, -1,
-			    IMSG_VMDOP_RECEIVE_VM_END, vm->vm_vmid, imsg->fd,
-			    NULL, 0);
-		} else {
+		} else if (ret != 0) {
 			res = errno;
 			cmd = IMSG_VMDOP_START_VM_RESPONSE;
 			close(imsg->fd);
+			break;
 		}
-		break;
+		vm->vm_state |= VM_STATE_RECEIVED;
+		config_setvm(ps, vm, imsg->hdr.peerid,
+		    vmc.vmc_owner.uid);
+		log_debug("%s: sending fd to vmm", __func__);
+		proc_compose_imsg(ps, PROC_VMM, -1,
+		    IMSG_VMDOP_RECEIVE_VM_END, vm->vm_vmid, imsg->fd,
+		    NULL, 0);
 	case IMSG_VMDOP_DONE:
 		control_reset(&ps->ps_csock);
 		TAILQ_FOREACH(rcs, &ps->ps_rcsocks, cs_entry)
