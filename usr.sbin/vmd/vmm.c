@@ -313,7 +313,7 @@ vmm_dispatch_parent(int fd, struct privsep_proc *p, struct imsg *imsg)
 		IMSG_SIZE_CHECK(imsg, &vmc);
 		memcpy(&vmc, imsg->data, sizeof(vmc));
 		ret = vm_register(ps, &vmc, &vm,
-		    imsg->hdr.peerid, vmc.vmc_owner.uid);
+		    imsg->hdr.peerid, 0);
 		vm->vm_tty = imsg->fd;
 		vm->vm_state |= VM_STATE_RECEIVED;
 		vm->vm_state |= VM_STATE_PAUSED;
