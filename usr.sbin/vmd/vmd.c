@@ -286,12 +286,13 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 		    sizeof(vmc.vmc_params.vcp_name));
 		clean_vmc(&vmc);
 
-		ret = vm_register(ps, &vmc, &vm, 0, vmc.vmc_owner.uid);
+		ret = vm_register(ps, &vmc, &vm, 0, vid.vid_uid);
 
 		if (ret == -1 && errno == EALREADY &&
 		   !(vm->vm_state & VM_STATE_RUNNING) &&
 		   !(vm_compare_vcp(&vm->vm_params.vmc_params,
 			&vmc.vmc_params))) {
+			vmc.vmc_owner = vm->vm_params.vmc_owner;
 			vm->vm_params = vmc;
 		} else if (ret != 0) {
 			res = errno;
