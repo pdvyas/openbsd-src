@@ -292,6 +292,12 @@ vmd_dispatch_control(int fd, struct privsep_proc *p, struct imsg *imsg)
 		   !(vm->vm_state & VM_STATE_RUNNING) &&
 		   !(vm_compare_vcp(&vm->vm_params.vmc_params,
 			&vmc.vmc_params))) {
+			if (vm_checkperm(vm, &vm->vm_params.vmc_owner,
+			    vid.vid_uid) != 0) {
+				res = EPERM;
+				cmd = IMSG_VMDOP_START_VM_RESPONSE;
+				break;
+			}
 			vmc.vmc_owner = vm->vm_params.vmc_owner;
 			vm->vm_params = vmc;
 		} else if (ret != 0) {
