@@ -64,7 +64,7 @@ ratelimit(int fd, short type, void *arg)
 }
 
 static void
-arm_write(int fd, short type, void *arg) {
+arm_read(int fd, short type, void *arg) {
 	event_add(&com1_dev.event, NULL);
 }
 
@@ -120,7 +120,7 @@ ns8250_init(int fd, uint32_t vmid)
 	com1_dev.rate_tv.tv_usec = 10000;
 	evtimer_set(&com1_dev.rate, ratelimit, NULL);
 	read_delay_tv.tv_usec = 10000;
-	evtimer_set(&read_delay_ev, arm_write,
+	evtimer_set(&read_delay_ev, arm_read,
 			(void *)(intptr_t)vmid);
 }
 
