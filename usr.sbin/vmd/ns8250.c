@@ -128,10 +128,6 @@ static void
 com_rcv_event(int fd, short kind, void *arg)
 {
 	mutex_lock(&com1_dev.mutex);
-	/* event_del(&com1_dev.event); */
-	/* event_set(&com1_dev.event, com1_dev.fd, EV_READ | EV_PERSIST, */
-	/*     com_rcv_event, arg); */
-	/* log_info("hehehhehehe"); */
 
 	if (kind == EV_WRITE) {
 		event_add(&com1_dev.event, NULL);

@@ -266,10 +266,10 @@ vcpu_exit_i8253(struct vm_run_params *vrp)
 				if (i8253_channel[sel].start == 0)
 					i8253_channel[sel].start = 0xffff;
 
-				/* log_debug("%s: channel %d reset, mode=%d, " */
-				/*     "start=%d", __func__, */
-				/*     sel, i8253_channel[sel].mode, */
-				/*     i8253_channel[sel].start); */
+				log_debug("%s: channel %d reset, mode=%d, "
+				    "start=%d", __func__,
+				    sel, i8253_channel[sel].mode,
+				    i8253_channel[sel].start);
 
 				i8253_reset(sel);
 			}
