@@ -41,7 +41,7 @@
 #include <dev/isa/isareg.h>
 #include <dev/pv/pvreg.h>
 
-/* #define VMM_DEBUG */
+#define VMM_DEBUG
 
 void *l1tf_flush_region;
 
@@ -1387,23 +1387,6 @@ vm_create_check_mem_ranges(struct vm_create_params *vcp)
 			return (0);
 
 		/*
-		 * Specifying ranges within the PCI MMIO space is forbidden.
-		 * Disallow ranges that start inside the MMIO space:
-		 * [VMM_PCI_MMIO_BAR_BASE .. VMM_PCI_MMIO_BAR_END]
-		 */
-		if (vmr->vmr_gpa >= VMM_PCI_MMIO_BAR_BASE &&
-		    vmr->vmr_gpa <= VMM_PCI_MMIO_BAR_END)
-			return (0);
-
-		/*
-		 * ... and disallow ranges that end inside the MMIO space:
-		 * (VMM_PCI_MMIO_BAR_BASE .. VMM_PCI_MMIO_BAR_END]
-		 */
-		if (vmr->vmr_gpa + vmr->vmr_size > VMM_PCI_MMIO_BAR_BASE &&
-		    vmr->vmr_gpa + vmr->vmr_size <= VMM_PCI_MMIO_BAR_END)
-			return (0);
-
-		/*
 		 * Make sure that guest physcal memory ranges do not overlap
 		 * and that they are ascending.
 		 */
@@ -1414,8 +1397,9 @@ vm_create_check_mem_ranges(struct vm_create_params *vcp)
 		pvmr = vmr;
 	}
 
-	if (memsize % (1024 * 1024) != 0)
+	if (memsize % (4096) != 0)
 		return (0);
+
 	memsize /= 1024 * 1024;
 	return (memsize);
 }
@@ -2251,7 +2235,7 @@ vcpu_writeregs_svm(struct vcpu *vcpu, uint64_t regmask,
 	}
 
 	if (regmask & VM_RWREGS_MSRS) {
-		vmcb->v_efer |= msrs[VCPU_REGS_EFER];
+		vmcb->v_efer = (msrs[VCPU_REGS_EFER]| EFER_SVME);
 		vmcb->v_star = msrs[VCPU_REGS_STAR];
 		vmcb->v_lstar = msrs[VCPU_REGS_LSTAR];
 		vmcb->v_cstar = msrs[VCPU_REGS_CSTAR];
@@ -4204,6 +4188,7 @@ vm_run(struct vm_run_params *vrp)
 		ret = 0;
 	} else if (ret == EAGAIN) {
 		/* If we are exiting, populate exit data so vmd can help. */
+
 		vrp->vrp_exit_reason = vcpu->vc_gueststate.vg_exit_reason;
 		vrp->vrp_irqready = vcpu->vc_irqready;
 		vcpu->vc_state = VCPU_STATE_STOPPED;
@@ -5088,6 +5073,7 @@ svm_handle_exit(struct vcpu *vcpu)
 		break;
 	case SVM_VMEXIT_NPF:
 		ret = svm_handle_np_fault(vcpu);
+		update_rip = 1;
 		break;
 	case SVM_VMEXIT_CPUID:
 		ret = vmm_handle_cpuid(vcpu);
@@ -5358,10 +5344,10 @@ vmm_get_guest_memtype(struct vm *vm, paddr_t gpa)
 	int i;
 	struct vm_mem_range *vmr;
 
-	if (gpa >= VMM_PCI_MMIO_BAR_BASE && gpa <= VMM_PCI_MMIO_BAR_END) {
-		DPRINTF("guest mmio access @ 0x%llx\n", (uint64_t)gpa);
-		return (VMM_MEM_TYPE_REGULAR);
-	}
+	/* if (gpa >= VMM_PCI_MMIO_BAR_BASE && gpa <= VMM_PCI_MMIO_BAR_END) { */
+	/* 	DPRINTF("guest mmio access @ 0x%llx\n", (uint64_t)gpa); */
+	/* 	return (VMM_MEM_TYPE_MMIO); */
+	/* } */
 
 	/* XXX Use binary search? */
 	for (i = 0; i < vm->vm_nmemranges; i++) {
@@ -5483,9 +5469,11 @@ svm_fault_page(struct vcpu *vcpu, paddr_t gpa)
 int
 svm_handle_np_fault(struct vcpu *vcpu)
 {
-	uint64_t gpa;
+	uint64_t gpa, agpa=0x000fe05b;
 	int gpa_memtype, ret;
 	struct vmcb *vmcb = (struct vmcb *)vcpu->vc_control_va;
+	paddr_t hpa;
+	uint8_t *val;
 
 	ret = 0;
 
@@ -5495,6 +5483,35 @@ svm_handle_np_fault(struct vcpu *vcpu)
 	switch (gpa_memtype) {
 	case VMM_MEM_TYPE_REGULAR:
 		ret = svm_fault_page(vcpu, gpa);
+		if (0) {
+			agpa = gpa;
+			if (!pmap_extract(vcpu->vc_parent->vm_map->pmap, agpa,
+						&hpa)) {
+				DPRINTF("%s: cannot extract HPA for GPA 0x%llx\n",
+						__func__, agpa);
+				return (EINVAL);
+			}
+			val = (uint8_t *)PMAP_DIRECT_MAP(hpa);
+			printf("yay gpa[0x%llx] = 0x%x\n", agpa,  *(val));
+			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 1 ,  *(val+1));
+			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 2 ,  *(val+2));
+			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 3 ,  *(val+3));
+			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 4 ,  *(val+4));
+			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 5 ,  *(val+5));
+			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 6 ,  *(val+6));
+			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 7 ,  *(val+7));
+			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 8 ,  *(val+8));
+		}
+
+		break;
+	case VMM_MEM_TYPE_MMIO:
+		ret = EAGAIN;
+		printf("%s: RIP at mmio access: 0x%llx\n", __func__, vmcb->v_rip);
+		printf("%s: gpa mmio access: 0x%llx\n", __func__, gpa);
+		printf("%s: nRIP at mmio access: 0x%llx\n", __func__, vmcb->v_nrip);
+		printf("%s: insn bytes fetched 0x%x\n", __func__, vmcb->v_n_bytes_fetched);
+		printf("%s: insn bytes[0] = 0x%x\n", __func__, vmcb->v_guest_ins_bytes[0]);
+		printf("%s: mode:  %s\n", __func__, vmm_decode_cpu_mode(vcpu));
 		break;
 	default:
 		printf("unknown memory type %d for GPA 0x%llx\n",
@@ -5569,6 +5586,8 @@ vmx_handle_np_fault(struct vcpu *vcpu)
 	switch (gpa_memtype) {
 	case VMM_MEM_TYPE_REGULAR:
 		ret = vmx_fault_page(vcpu, gpa);
+		break;
+	case VMM_MEM_TYPE_MMIO:
 		break;
 	default:
 		printf("unknown memory type %d for GPA 0x%llx\n",
@@ -5737,52 +5756,7 @@ svm_handle_inout(struct vcpu *vcpu)
 	vcpu->vc_exit.vei.vei_data = vmcb->v_rax;
 
 	vcpu->vc_gueststate.vg_rip += insn_length;
-
-	/*
-	 * The following ports usually belong to devices owned by vmd.
-	 * Return EAGAIN to signal help needed from userspace (vmd).
-	 * Return 0 to indicate we don't care about this port.
-	 *
-	 * XXX something better than a hardcoded list here, maybe
-	 * configure via vmd via the device list in vm create params?
-	 */
-	switch (vcpu->vc_exit.vei.vei_port) {
-	case IO_ICU1 ... IO_ICU1 + 1:
-	case 0x40 ... 0x43:
-	case PCKBC_AUX:
-	case IO_RTC ... IO_RTC + 1:
-	case IO_ICU2 ... IO_ICU2 + 1:
-	case 0x3f8 ... 0x3ff:
-	case ELCR0 ... ELCR1:
-	case 0x500 ... 0x511:
-	case 0x514:
-	case 0x518:
-	case 0xcf8:
-	case 0xcfc ... 0xcff:
-	case VMM_PCI_IO_BAR_BASE ... VMM_PCI_IO_BAR_END:
-		ret = EAGAIN;
-		break;
-	default:
-		/* Read from unsupported ports returns FFs */
-		if (vcpu->vc_exit.vei.vei_dir == 1) {
-			switch(vcpu->vc_exit.vei.vei_size) {
-			case 1:
-				vcpu->vc_gueststate.vg_rax |= 0xFF;
-				vmcb->v_rax |= 0xFF;
-				break;
-			case 2:
-				vcpu->vc_gueststate.vg_rax |= 0xFFFF;
-				vmcb->v_rax |= 0xFFFF;
-				break;
-			case 4:
-				vcpu->vc_gueststate.vg_rax |= 0xFFFFFFFF;
-				vmcb->v_rax |= 0xFFFFFFFF;
-				break;
-			}
-		}
-		ret = 0;
-	}
-
+	ret = EAGAIN;
 	return (ret);
 }
 
