@@ -5335,11 +5335,6 @@ vmm_get_guest_memtype(struct vm *vm, paddr_t gpa)
 	int i;
 	struct vm_mem_range *vmr;
 
-	/* if (gpa >= VMM_PCI_MMIO_BAR_BASE && gpa <= VMM_PCI_MMIO_BAR_END) { */
-	/* 	DPRINTF("guest mmio access @ 0x%llx\n", (uint64_t)gpa); */
-	/* 	return (VMM_MEM_TYPE_MMIO); */
-	/* } */
-
 	/* XXX Use binary search? */
 	for (i = 0; i < vm->vm_nmemranges; i++) {
 		vmr = &vm->vm_memranges[i];
@@ -5460,11 +5455,9 @@ svm_fault_page(struct vcpu *vcpu, paddr_t gpa)
 int
 svm_handle_np_fault(struct vcpu *vcpu)
 {
-	uint64_t gpa, agpa=0x000fe05b;
+	uint64_t gpa;
 	int gpa_memtype, ret;
 	struct vmcb *vmcb = (struct vmcb *)vcpu->vc_control_va;
-	paddr_t hpa;
-	uint8_t *val;
 
 	ret = 0;
 
@@ -5474,35 +5467,9 @@ svm_handle_np_fault(struct vcpu *vcpu)
 	switch (gpa_memtype) {
 	case VMM_MEM_TYPE_REGULAR:
 		ret = svm_fault_page(vcpu, gpa);
-		if (0) {
-			agpa = gpa;
-			if (!pmap_extract(vcpu->vc_parent->vm_map->pmap, agpa,
-						&hpa)) {
-				DPRINTF("%s: cannot extract HPA for GPA 0x%llx\n",
-						__func__, agpa);
-				return (EINVAL);
-			}
-			val = (uint8_t *)PMAP_DIRECT_MAP(hpa);
-			printf("yay gpa[0x%llx] = 0x%x\n", agpa,  *(val));
-			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 1 ,  *(val+1));
-			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 2 ,  *(val+2));
-			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 3 ,  *(val+3));
-			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 4 ,  *(val+4));
-			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 5 ,  *(val+5));
-			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 6 ,  *(val+6));
-			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 7 ,  *(val+7));
-			printf("yay gpa[0x%llx] = 0x%x\n", agpa + 8 ,  *(val+8));
-		}
-
 		break;
 	case VMM_MEM_TYPE_MMIO:
 		ret = EAGAIN;
-		printf("%s: RIP at mmio access: 0x%llx\n", __func__, vmcb->v_rip);
-		printf("%s: gpa mmio access: 0x%llx\n", __func__, gpa);
-		printf("%s: nRIP at mmio access: 0x%llx\n", __func__, vmcb->v_nrip);
-		printf("%s: insn bytes fetched 0x%x\n", __func__, vmcb->v_n_bytes_fetched);
-		printf("%s: insn bytes[0] = 0x%x\n", __func__, vmcb->v_guest_ins_bytes[0]);
-		printf("%s: mode:  %s\n", __func__, vmm_decode_cpu_mode(vcpu));
 		break;
 	default:
 		printf("unknown memory type %d for GPA 0x%llx\n",

@@ -634,7 +634,7 @@ _C_LABEL(svm_enter_guest):
 	/* %rax at 0x08(%rsi) is not needed in SVM */
 	movq	0x00(%rsi), %rsi
 
-	/* debug */
+	/* bochs debug */
 	// xchg %bx, %bx 
 	vmload	%rax
 	vmrun	%rax
