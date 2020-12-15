@@ -704,7 +704,8 @@ enum {
 
 enum {
 	VMM_MEM_TYPE_REGULAR,
-	VMM_MEM_TYPE_UNKNOWN
+	VMM_MEM_TYPE_UNKNOWN,
+	VMM_MEM_TYPE_MMIO
 };
 
 /* Forward declarations */
