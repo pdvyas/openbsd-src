@@ -463,6 +463,7 @@ struct vm_exit {
 
 	struct vcpu_reg_state		vrs;
 	int				cpl;
+	int				mode;
 };
 
 struct vm_create_params {
