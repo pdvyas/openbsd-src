@@ -4872,6 +4872,7 @@ vcpu_run_vmx(struct vcpu *vcpu, struct vm_run_params *vrp)
 	if (vcpu_readregs_vmx(vcpu, VM_RWREGS_ALL, &vcpu->vc_exit.vrs))
 		ret = EINVAL;
 	vcpu->vc_exit.cpl = vmm_get_guest_cpu_cpl(vcpu);
+	vcpu->vc_exit.mode = vmm_get_guest_cpu_mode(vcpu);
 	/*
 	 * We are heading back to userspace (vmd), either because we need help
 	 * handling an exit, a guest interrupt is pending, or we failed in some
