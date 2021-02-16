@@ -347,6 +347,8 @@ enum {
  */
 struct vm_exit_inout {
 	uint8_t			vei_size;	/* Size of access */
+	uint8_t			vei_addr_size;	/* address size */
+	uint8_t			vei_seg;	/* Segment number */
 	uint8_t			vei_dir;	/* Direction */
 	uint8_t			vei_rep;	/* REP prefix? */
 	uint8_t			vei_string;	/* string variety? */
@@ -406,12 +408,12 @@ struct vcpu_segment_info {
 #define VCPU_REGS_PDPTE3 9
 #define VCPU_REGS_NCRS	(VCPU_REGS_PDPTE3 + 1)
 
-#define VCPU_REGS_CS		0
-#define VCPU_REGS_DS		1
-#define VCPU_REGS_ES		2
-#define VCPU_REGS_FS		3
-#define VCPU_REGS_GS		4
-#define VCPU_REGS_SS		5
+#define VCPU_REGS_ES		0
+#define VCPU_REGS_CS		1
+#define VCPU_REGS_SS		2
+#define VCPU_REGS_DS		3
+#define VCPU_REGS_FS		4
+#define VCPU_REGS_GS		5
 #define VCPU_REGS_LDTR		6
 #define VCPU_REGS_TR		7
 #define VCPU_REGS_NSREGS	(VCPU_REGS_TR + 1)

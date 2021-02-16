@@ -5691,6 +5691,16 @@ svm_handle_inout(struct vcpu *vcpu)
 	else if (exit_qual & 0x40)
 		vcpu->vc_exit.vei.vei_size = 4;
 
+	/* Bits 7:9 - address size */
+	if (exit_qual & 0x80)
+		vcpu->vc_exit.vei.vei_addr_size = 1;
+	else if (exit_qual & 0x100)
+		vcpu->vc_exit.vei.vei_addr_size = 2;
+	else if (exit_qual & 0x200)
+		vcpu->vc_exit.vei.vei_addr_size = 4;
+
+	/* vcpu->vc_exit.vei.vei_seg = (exit_qual & 0x1c00) >> 10; */
+
 	/* Bit 16:31 - port */
 	vcpu->vc_exit.vei.vei_port = (exit_qual & 0xFFFF0000) >> 16;
 	/* Data */
@@ -7047,8 +7057,11 @@ vcpu_run_svm(struct vcpu *vcpu, struct vm_run_params *vrp)
 	 * way to enter the guest. Copy the guest registers to the exit struct
 	 * and return to vmd.
 	 */
+	/* Copy the VCPU register state to the exit structure */
 	if (vcpu_readregs_svm(vcpu, VM_RWREGS_ALL, &vcpu->vc_exit.vrs))
 		ret = EINVAL;
+	vcpu->vc_exit.cpl = vmm_get_guest_cpu_cpl(vcpu);
+	vcpu->vc_exit.mode = vmm_get_guest_cpu_mode(vcpu);
 
 #ifdef VMM_DEBUG
 	KERNEL_ASSERT_LOCKED();
