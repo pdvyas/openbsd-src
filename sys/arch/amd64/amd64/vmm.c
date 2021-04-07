@@ -5473,8 +5473,8 @@ svm_handle_np_fault(struct vcpu *vcpu)
 		ret = EAGAIN;
 		break;
 	default:
-		printf("unknown memory type %d for GPA 0x%llx\n",
-		    gpa_memtype, gpa);
+		printf("unknown memory type %d for GPA 0x%llx at RIP 0x%llx\n",
+		    gpa_memtype, gpa, vcpu->vc_gueststate.vg_rip);
 		return (EINVAL);
 	}
 
