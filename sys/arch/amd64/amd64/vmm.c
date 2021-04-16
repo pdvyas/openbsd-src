@@ -5726,7 +5726,9 @@ svm_handle_inout(struct vcpu *vcpu)
 	else if (exit_qual & 0x200)
 		vcpu->vc_exit.vei.vei_addr_size = 4;
 
-	/* vcpu->vc_exit.vei.vei_seg = (exit_qual & 0x1c00) >> 10; */
+	/* Bit 12:10 - seg */
+	/* TODO(pd): check cap  */
+	vcpu->vc_exit.vei.vei_seg = (exit_qual & 0x1c00) >> 10;
 
 	/* Bit 16:31 - port */
 	vcpu->vc_exit.vei.vei_port = (exit_qual & 0xFFFF0000) >> 16;
