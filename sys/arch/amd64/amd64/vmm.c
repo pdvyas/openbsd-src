@@ -4954,7 +4954,7 @@ svm_handle_hlt(struct vcpu *vcpu)
 	if (!(rflags & PSL_I)) {
 		DPRINTF("%s: guest halted with interrupts disabled\n",
 		    __func__);
-		return (EIO);
+		/* return (EIO); */
 	}
 
 	return (EAGAIN);
@@ -5478,13 +5478,17 @@ svm_handle_np_fault(struct vcpu *vcpu)
 	case VMM_MEM_TYPE_REGULAR:
 		ret = svm_fault_page(vcpu, gpa);
 		break;
-	case VMM_MEM_TYPE_MMIO:
-		ret = EAGAIN;
-		break;
+	/* case VMM_MEM_TYPE_MMIO: */
+	/* 	ret = EAGAIN; */
+	/* 	break; */
 	default:
 		printf("unknown memory type %d for GPA 0x%llx at RIP 0x%llx\n",
 		    gpa_memtype, gpa, vcpu->vc_gueststate.vg_rip);
-		return (EINVAL);
+		printf("nRIP 0x%llx\n", vmcb->v_nrip);
+		vcpu->vc_exit.venpf.venpf_gpa = gpa;
+		vcpu->vc_exit.venpf.venpf_insn_length = vmcb->v_n_bytes_fetched;
+		memcpy(vcpu->vc_exit.venpf.venpf_insn_bytes, vmcb->v_guest_ins_bytes, sizeof(vcpu->vc_exit.venpf.venpf_insn_bytes));
+		return (EAGAIN);
 	}
 
 	return (ret);
@@ -6949,6 +6953,8 @@ vcpu_run_svm(struct vcpu *vcpu, struct vm_run_params *vrp)
 				    vcpu->vc_exit.vei.vei_data;
 				vmcb->v_rax = vcpu->vc_gueststate.vg_rax;
 			}
+		case SVM_VMEXIT_NPF:
+			vmcb->v_rip = vcpu->vc_gueststate.vg_rip;
 		}
 	}
 

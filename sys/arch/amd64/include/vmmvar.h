@@ -356,6 +356,13 @@ struct vm_exit_inout {
 	uint16_t		vei_port;	/* port */
 	uint32_t		vei_data;	/* data */
 };
+
+struct vm_exit_npf {
+	uint64_t		venpf_gpa;	/* gpa accessed */
+        uint8_t			venpf_insn_length;	/* Instruction len */
+        uint8_t			venpf_insn_bytes[0xf];	/* instruction bytes */
+};
+
 /*
  *  vm_exit_eptviolation	: describes an EPT VIOLATION exit
  */
@@ -460,6 +467,7 @@ struct vm_mem_range {
 struct vm_exit {
 	union {
 		struct vm_exit_inout		vei;	/* IN/OUT exit */
+		struct vm_exit_npf		venpf;	/* IN/OUT exit */
 		struct vm_exit_eptviolation	vee;	/* EPT VIOLATION exit*/
 	};
 
